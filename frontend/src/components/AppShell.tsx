@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import type { Me } from '../auth'
 import { crumbsFor, useCrumbName } from './crumbs'
-import { managementNav, salesmanNav } from './nav'
+import { managementNav, salesmanNav, toneFor, toneStyle } from './nav'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
 import DutyTracker from './DutyTracker'
@@ -44,7 +44,8 @@ export default function AppShell({ me, children }: { me: Me; children: React.Rea
   useEffect(() => { document.title = page ? `${page} · Sales Master` : 'Sales Master' }, [page])
 
   return (
-    <div className="min-h-screen bg-white text-slate-900">
+    // The whole shell takes the current section's colour; the sidebar and bottom bar give each item its own.
+    <div className="min-h-screen bg-white text-slate-900" style={toneStyle(toneFor(items, pathname))}>
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[80] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white">Skip to content</a>
       <Sidebar items={items} followups={followups} collapsed={collapsed} open={drawer} onNavigate={() => setDrawer(false)} onExpand={() => setCollapsedSaved(false)} />
       {drawer && <div aria-hidden className="fixed inset-0 z-30 bg-primary/40 lg:hidden" onClick={() => setDrawer(false)} />}

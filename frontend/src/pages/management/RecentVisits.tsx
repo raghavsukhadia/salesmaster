@@ -88,7 +88,7 @@ export default function RecentVisits({ rows, loading, error, onRetry, rangeLabel
           <td className="sm:whitespace-nowrap">
             {v.followup_due ? <span className={v.followup_due < today() ? 'font-medium text-red-700' : 'text-slate-700'}>{fmtDate(v.followup_due, true)}{v.followup_due < today() && <span className="ml-1 text-xs">(overdue)</span>}</span> : <span className="text-slate-400">None set</span>}
           </td>
-          <td className="text-right" data-label=""><Link to={`/visits/${v.id}`} aria-label={`View visit to ${v.dealer}`} className={buttonClass('secondary', 'sm', 'max-sm:h-10 max-sm:w-full')}><Eye size={14} aria-hidden />View</Link></td>
+          <td className="text-right" data-label=""><Link to={`/visits/${v.id}`} aria-label={`View visit to ${v.dealer}`} className={buttonClass('soft', 'sm', 'max-sm:h-10 max-sm:w-full')}><Eye size={14} aria-hidden />View</Link></td>
         </tr>
       ))}
     </Table>

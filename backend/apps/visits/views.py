@@ -22,14 +22,16 @@ class DuplicateCheckView(APIView):
 
 
 class ProductListView(APIView):
-    """Active catalogue for the order picker. Read-only for any authenticated user."""
+    """Active catalogue for the order picker. Read-only for any authenticated user.
+
+    The picker loads the whole catalogue once and filters it as the salesman types, so the cap is generous."""
 
     def get(self, request):
         qs = Product.objects.filter(is_active=True)
         q = request.query_params.get("q", "").strip()
         if q:
             qs = qs.filter(name__icontains=q)
-        return Response(list(qs.order_by("name").values("id", "name", "category")[:30]))
+        return Response(list(qs.order_by("name").values("id", "name", "category")[:1000]))
 
 
 class RecordVisitView(APIView):

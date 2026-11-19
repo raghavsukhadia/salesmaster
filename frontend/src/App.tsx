@@ -17,6 +17,7 @@ import Products from './pages/management/Products'
 import OwnershipCleanup from './pages/management/OwnershipCleanup'
 import AccessGrants from './pages/management/AccessGrants'
 import TransferDealers from './pages/management/TransferDealers'
+import DealerImport from './pages/management/DealerImport'
 import SalesmanDetail from './pages/management/SalesmanDetail'
 import Visits from './pages/management/Visits'
 import FollowupsManagement from './pages/management/FollowupsManagement'
@@ -144,6 +145,7 @@ export default function App() {
             <Route path="/dealers/ownership-cleanup" element={<OwnershipCleanup />} />
             <Route path="/dealers/access-grants" element={<AccessGrants />} />
             <Route path="/dealers/transfer" element={<TransferDealers />} />
+            <Route path="/dealers/import" element={<DealerImport />} />
             <Route path="/products" element={<Products />} />
             <Route path="/dealers/:id" element={<DealerDetail />} />
             <Route path="/salesmen" element={<Salesmen />} />

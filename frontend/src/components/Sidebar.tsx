@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { ChevronDown, Hourglass, X } from 'lucide-react'
-import { activeLabel, RANGE_ROUTES, type NavItem } from './nav'
+import { activeLabel, RANGE_ROUTES, toneStyle, type NavItem } from './nav'
 import Tooltip from './Tooltip'
 import { useToast } from './ui'
 import type { FollowupSummary } from '../visit/followupBadge'
 
-const ROW = 'group relative flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors'
+const ROW = 'group relative flex h-11 w-full items-center gap-3 rounded-lg px-2 text-sm font-medium transition-colors'
 
 interface Props {
   items: NavItem[]
@@ -48,12 +48,19 @@ export default function Sidebar({ items, followups, collapsed, open, onNavigate,
         <ul className="space-y-1">
           {items.map((it) => {
             const Icon = it.icon
-            const icon = <Icon size={18} strokeWidth={1.75} className="shrink-0" aria-hidden />
+            const isActive = active === it.label
+            // Every item shows its section colour on its icon, so sections are told apart before reading the label.
+            const icon = (
+              <span aria-hidden className={`grid size-7 shrink-0 place-items-center rounded-md transition-colors ${isActive ? 'bg-primary text-white' : 'bg-primary-soft text-primary'}`}>
+                <Icon size={16} strokeWidth={2} />
+              </span>
+            )
+            const tone = toneStyle(it.tone)
 
             if (it.soon) {
               const why = `${it.label}: ${it.soon}`
               return (
-                <li key={it.label}>
+                <li key={it.label} style={tone}>
                   <Tooltip text={why}>
                     <button type="button" aria-disabled="true" onClick={() => toast(why, 'info')}
                       className={`${ROW} cursor-not-allowed text-slate-400 hover:bg-slate-50 ${center}`}>
@@ -67,10 +74,9 @@ export default function Sidebar({ items, followups, collapsed, open, onNavigate,
             }
 
             if (it.children) {
-              const isActive = active === it.label
               const isOpen = groups[it.label] ?? isActive
               return (
-                <li key={it.label}>
+                <li key={it.label} style={tone}>
                   <Tooltip text={it.label} disabled={!collapsed}>
                     <button type="button" aria-expanded={isOpen} aria-controls={`grp-${it.label}`}
                       onClick={() => {
@@ -100,13 +106,12 @@ export default function Sidebar({ items, followups, collapsed, open, onNavigate,
               )
             }
 
-            const isActive = active === it.label
             return (
-              <li key={it.label}>
+              <li key={it.label} style={tone}>
                 <Tooltip text={it.label} disabled={!collapsed}>
                   <Link to={target(it.to!)} onClick={onNavigate} aria-current={isActive ? 'page' : undefined}
                     className={`${ROW} ${isActive ? 'bg-primary-soft text-primary' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'} ${center}`}>
-                    {isActive && <span aria-hidden className="absolute -left-3 bottom-2 top-2 w-[3px] rounded-r bg-accent" />}
+                    {isActive && <span aria-hidden className="absolute -left-3 bottom-2 top-2 w-[3px] rounded-r bg-primary" />}
                     {icon}
                     <span className={`truncate ${hide}`}>{it.label}</span>
                     {it.badge === 'followups' && followups && followups.attention > 0 && (

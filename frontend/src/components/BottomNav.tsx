@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { activeLabel, type NavItem } from './nav'
+import { activeLabel, toneStyle, type NavItem } from './nav'
 import type { FollowupSummary } from '../visit/followupBadge'
 
 /**
@@ -19,11 +19,11 @@ export default function BottomNav({ items, followups }: { items: NavItem[]; foll
           const isActive = active === it.label
           const count = it.badge === 'followups' && followups ? followups.attention : 0
           return (
-            <li key={it.label} className="min-w-0 flex-1">
+            <li key={it.label} className="min-w-0 flex-1" style={toneStyle(it.tone)}>
               <Link to={it.to!} aria-current={isActive ? 'page' : undefined}
                 className={`relative flex h-16 flex-col items-center justify-center gap-1 px-1 text-[11px] font-medium transition-colors ${isActive ? 'bg-primary-soft text-primary' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}>
-                {isActive && <span aria-hidden className="absolute inset-x-4 top-0 h-[3px] rounded-b bg-accent" />}
-                <span className="relative">
+                {isActive && <span aria-hidden className="absolute inset-x-4 top-0 h-[3px] rounded-b bg-primary" />}
+                <span className={`relative ${isActive ? '' : 'text-primary/70'}`}>
                   <Icon size={22} strokeWidth={isActive ? 2 : 1.75} aria-hidden />
                   {count > 0 && (
                     <span data-testid="followup-badge" className={`absolute -right-2.5 -top-1.5 min-w-4 rounded-full px-1 text-center text-[10px] font-semibold leading-4 tabular-nums text-white ring-2 ring-white ${followups!.overdue > 0 ? 'bg-red-600' : 'bg-accent-ink'}`}>

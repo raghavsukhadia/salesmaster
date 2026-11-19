@@ -96,7 +96,7 @@ export default function SalesmanActivity({ rows, loading, error, onRetry, canAdd
                   {s.last_visit_at ? <time dateTime={s.last_visit_at} title={`${fmtDate(s.last_visit_at)}, ${fmtTime(s.last_visit_at)}`}>{fmtRelative(s.last_visit_at)}</time> : <span className="text-slate-400">No visits yet</span>}
                 </td>
                 <td className="text-right" data-label="">
-                  <Link to={`/salesmen/${s.id}`} aria-label={`View details for ${s.name}`} className={buttonClass('secondary', 'sm', 'max-sm:h-10 max-sm:w-full')}><Eye size={14} aria-hidden />View</Link>
+                  <Link to={`/salesmen/${s.id}`} aria-label={`View details for ${s.name}`} className={buttonClass('soft', 'sm', 'max-sm:h-10 max-sm:w-full')}><Eye size={14} aria-hidden />View</Link>
                 </td>
               </tr>
             ))}

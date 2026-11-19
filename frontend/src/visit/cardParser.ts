@@ -124,15 +124,21 @@ function findGstin(line: string): string {
 }
 
 /**
- * Indian mobile numbers only (10 digits starting 6-9), optionally with +91 / 91 / 0 in front, either contiguous or grouped 5+5.
- * Landlines such as 0712-6781234 or 020 2456 7890 do not match. Group 2 is the national number.
+ * Indian mobile numbers only (10 digits starting 6-9), optionally with +91 / 91 / 0 in front, in any grouping
+ * (98765 43210, 987 654 3210, 98-7654-3210) with single spaces, dots or dashes between digits.
+ * After a leading 0 only the plain shapes count (09876543210, 0 98765 43210), so landlines such as 0712-6781234 or
+ * 020 2456 7890 do not match. Group 2 (or 3, after a 0) is the national number.
  */
-const MOBILE_SRC = String.raw`(^|[^\d])(?:(?:\+|00)?91[\s.-]*|\(?0\)?[\s.-]*)?([6-9]\d{9}|[6-9]\d{4}[\s.-]\d{5})(?!\d)`
+const MOBILE_SRC = String.raw`(^|[^\d])(?:(?:(?:\+|00)?91[\s.-]*)?([6-9](?:[\s.-]?\d){9})|\(?0\)?[\s.-]*([6-9]\d{9}|[6-9]\d{4}[\s.-]\d{5}))(?!\d)`
+
+/** OCR reads 0 as O/o and 1 as l/I inside long digit runs ("98765 432l0"). Fixes them only inside such runs, so words are untouched. */
+const fixDigitRuns = (line: string) =>
+  line.replace(/\d[\dOoIl\s.-]{8,}[\dOo]/g, (run) => (/\d.*\d.*\d.*\d.*\d.*\d/.test(run) ? run.replace(/[Oo]/g, '0').replace(/[Il]/g, '1') : run))
 const MOBILE = new RegExp(MOBILE_SRC, 'g')
 /** Same number, plus the "Mob:" / "Ph." style label sitting right in front of it, so masking leaves no stray label behind. */
 const MOBILE_WITH_LABEL = new RegExp(String.raw`(?:\b(?:mob(?:ile)?|ph(?:one)?|tel|cell|call|whats\s?app|w\/?a)\b\.?(?:\s*no\.?)?[\s:.-]*)?` + MOBILE_SRC, 'gi')
 
-const mobilesIn = (line: string) => [...line.matchAll(MOBILE)].map((m) => m[2].replace(/\D/g, ''))
+const mobilesIn = (line: string) => [...line.matchAll(MOBILE)].map((m) => (m[2] ?? m[3]).replace(/\D/g, ''))
 const maskMobiles = (line: string) => line.replace(MOBILE_WITH_LABEL, '$1 ')
 
 const BUSINESS_WORD = /\b(enterprises?|traders?|trading|auto|autos|automobiles?|motors?|tyres?|tires?|accessor(?:y|ies)|agenc(?:y|ies)|stores?|pvt|private|ltd|limited|llp|company|co|corporation|corp|industries|solutions|services|sales|mart|point|centre|center|garage|hub|world|zone|house|distributors?|wholesale|retail|films?|tint|tints|car|cars|care|decor|shop|emporium|associates|works|workshop|group|brothers|bros|sons|exports?|imports?|marketing|systems|technologies|tech|mobiles?|electronics?|electricals?|hardware|glass|garments?|studio|detailing|customs?|wraps?|ppf)\b/i
@@ -147,7 +153,7 @@ const TAGLINE = /^(dealers?|deals?|we deal|all kinds|specialists?|manufacturers?
 const LABEL_LINE = /^(mob(?:ile)?|ph(?:one)?|tel|telephone|cell|call|e-?mail|mail|web(?:site)?|www|add(?:ress)?|gst(?:in)?|pan|fax|off(?:ice)?|res|timings?|time|visit|follow)\s*(?:no\.?)?\s*[:.-]/i
 const ADDRESS_LABEL = /^(?:add(?:ress)?|regd\.?\s*office|off(?:ice)?)\s*[:.-]\s*/i
 
-const ADDRESS_WORD = /\b(road|rd|street|nagar|colony|market|chowk|plaza|complex|building|bldg|floor|shop|plot|sector|lane|near|opp|opposite|behind|industrial|estate|marg|gali|bazaar|bazar|highway|phase|ward|village|post|dist|district|taluka|cross|layout|towers?|apartments?|society|mall|circle|square|bus stand|station|gate|area|extension|cantt|cantonment|stand|nh)\b\.?/i
+const ADDRESS_WORD = /\b(road|rd|street|st|nagar|colony|market|chowk|chauk|plaza|complex|building|bldg|floor|shop|plot|sector|lane|near|nr|opp|opposite|behind|beside|industrial|estate|marg|gali|galli|bazaar|bazar|highway|phase|ward|village|post|po|dist|district|taluka|tal|tq|cross|layout|towers?|apartments?|society|mall|circle|square|bus stand|station|gate|area|extension|cantt|cantonment|stand|nh|gala|bhavan|bhawan|bhuvan|peth|wadi|mohalla|chawl|arcade|block|unit|flat|midc|gidc|vihar|enclave|sadan|niwas|nivas|kunj|puram|main)\b\.?/i
 
 /** "12, ..." / "12/3, ..." / "12-A, ..." at the start of a line. A bare "24 Hours Service" is not an address. */
 const LEADING_NUMBER = /^\d+(?:[/-]\w+)*\s*,/
@@ -205,10 +211,11 @@ function cityFrom(addr: string, pincode: string, state: string): string {
     return district
   }
 
-  const pinAt = pincode ? segs.findIndex((s) => s.includes(pincode)) : -1
-  if (pinAt >= 0) {
+  const pinRe = pincode ? new RegExp(`${pincode.slice(0, 3)}\\s?${pincode.slice(3)}`) : null // printed as 440012 or 440 012
+  const pinAt = pinRe ? segs.findIndex((s) => pinRe.test(s)) : -1
+  if (pinRe && pinAt >= 0) {
     // "Pune 411001" or "Uttar Pradesh 201301": drop the pincode and any "Pin:" label, then see what is left.
-    const rest = tidy(segs[pinAt].replace(pincode, ' ').replace(/\bpin\s*(?:code)?\b[:.\s-]*/i, ' '))
+    const rest = tidy(segs[pinAt].replace(pinRe, ' ').replace(/\bpin\s*(?:code)?\b[:.\s-]*/i, ' '))
     if (usable(rest)) return titleCase(rest)
     return lookBack(pinAt - 1)
   }
@@ -266,8 +273,9 @@ export function parseCard(raw: string): CardFields {
 
   // 2. Mobile numbers. Each is masked out of its line so it cannot later be read as a pincode or part of a name.
   let waNumber = ''
-  L.forEach((line, i) => {
-    if (/\bfax\b/i.test(line)) return
+  L.forEach((original, i) => {
+    if (/\bfax\b/i.test(original)) return
+    const line = fixDigitRuns(original)
     const nums = mobilesIn(line)
     if (!nums.length) return
     const isWa = /whats\s?app|\bw\/?a\b/i.test(line)
@@ -290,17 +298,25 @@ export function parseCard(raw: string): CardFields {
     if (/\b(cin|reg(?:d)?\.?\s*no|licen[cs]e|fssai|udyam|pan)\b/i.test(l)) return
     const labelled = /\bpin\s*(?:code)?\s*[:.-]?\s*([1-9]\d{2})\s?(\d{3})(?!\d)/i.exec(l)
     if (labelled) { if (best.score < 3) best = { pin: labelled[1] + labelled[2], score: 3 }; return }
+    const addressy = /[,-]/.test(l) || !!stateIn(l)
     for (const m of l.matchAll(/(^|[^\d])([1-9]\d{5})(?!\d)/g)) {
-      const score = /[,-]/.test(l) || stateIn(l) ? 2 : 1
+      const score = addressy ? 2 : 1
       if (score > best.score) best = { pin: m[2], score }
+    }
+    // "Nagpur - 440 012": a pincode printed in two groups, trusted only on a line that reads like an address.
+    if (addressy && best.score < 2) {
+      const spaced = /(^|[^\d])([1-9]\d{2}) (\d{3})(?![\d])/.exec(l)
+      if (spaced) best = { pin: spaced[2] + spaced[3], score: 2 }
     }
   })
   out.pincode = best.pin
 
   // 5. Address lines.
+  const pinPrinted = out.pincode ? new RegExp(`${out.pincode.slice(0, 3)}\\s?${out.pincode.slice(3)}`) : null
   const isAddr = L.map((l, i) => {
     if (consumed.has(i)) return false
-    if (out.pincode && l.includes(out.pincode)) return true
+    if (ADDRESS_LABEL.test(l) && letters(l.replace(ADDRESS_LABEL, '')) >= 3) return true // "Add: Gandhi Bhavan, ..." is an address whatever it says
+    if (pinPrinted && pinPrinted.test(l)) return true
     if (/\bpin\s*(?:code)?\b/i.test(l)) return true
     if (isStateOnly(l) || (stateIn(l) && /[,\d-]/.test(l))) return true
     return ADDRESS_WORD.test(l) || LEADING_NUMBER.test(l)
@@ -308,6 +324,13 @@ export function parseCard(raw: string): CardFields {
   // A short line between two address lines ("Ganesh Complex" between "Shop 3," and "MG Road,") belongs to them.
   for (let i = 1; i < L.length - 1; i++) {
     if (!isAddr[i] && isAddr[i - 1] && isAddr[i + 1] && !consumed.has(i) && L[i].split(' ').length <= 5 && looksLikeText(L[i])) isAddr[i] = true
+  }
+  // An address that wraps: a line ending in "," or "-" (or an "Add:" line) carries on to the next one ("Add: 14, Gandhi Bhavan," / "Sitabuldi,").
+  for (let i = 1; i < L.length; i++) {
+    const prev = L[i - 1]
+    const carries = isAddr[i - 1] && (/[,-]$/.test(prev) || ADDRESS_LABEL.test(prev))
+    if (!isAddr[i] && carries && !consumed.has(i) && !LABEL_LINE.test(L[i]) && !onlyDesignation(L[i]) && L[i].split(' ').length <= 8
+        && (looksLikeText(L[i]) || /\d/.test(L[i]))) isAddr[i] = true
   }
   const addrText = L.filter((_, i) => isAddr[i]).map((l) => trimEdges(l.replace(ADDRESS_LABEL, ''))).filter(Boolean).join(', ')
   out.address = addrText

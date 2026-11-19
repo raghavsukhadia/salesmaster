@@ -1,6 +1,7 @@
 from django.urls import path
 
 from . import catalog_views as cv
+from . import dealer_import as di
 from . import detail_views as dv
 from . import salesman_views as sv
 from . import scope_views as sc
@@ -30,6 +31,7 @@ urlpatterns = [
     path("management/salesmen/<int:pk>/visits/", sv.SalesmanVisitsView.as_view()),
     path("management/salesmen/<int:pk>/dealers/", sv.SalesmanDealersView.as_view()),
     path("management/dashboard/", views.DashboardView.as_view()),
+    path("management/dealers/import/", di.DealerImportView.as_view()),
     path("management/dealers/", views.DealersView.as_view()),
     path("management/salesmen/", views.SalesmenView.as_view()),
     path("management/visits/", views.VisitsView.as_view()),

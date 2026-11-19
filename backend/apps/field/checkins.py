@@ -14,7 +14,7 @@ from rest_framework.exceptions import NotFound
 
 from apps.dealers.access import accessible_dealers
 from apps.visits.models import Visit
-from apps.visits.services import record_visit
+from apps.visits.services import adopt_salesman_location, record_visit
 
 from . import services
 from .geo import haversine_m, valid_coordinate
@@ -124,6 +124,9 @@ def check_in(user, salesman, *, dealer_id, position, sent_at=None, reason="", cl
             if override:
                 services.audit(user, FieldAuditLog.Action.CHECKIN_OVERRIDE, salesman=salesman, dealer_id=dealer.id, phase="in",
                                geofence=geo["result"], distance_m=geo["distance_m"], reason=override)
+            if geo["result"] == G.NO_DEALER_LOCATION:
+                # The salesman is standing at the shop: their reading becomes its (unverified) location.
+                adopt_salesman_location(salesman, dealer, fix["latitude"], fix["longitude"], fix["accuracy_m"], via="checkin")
     except IntegrityError:
         again = DealerCheckIn.objects.filter(salesman=salesman, client_request_id=client_request_id).first() if client_request_id else None
         if again:
@@ -153,7 +156,7 @@ def check_out(user, salesman, checkin_id, *, position, sent_at=None, outcome, no
 
         visit, _ = record_visit(user, {
             "dealer_id": checkin.dealer_id, "visited_at": checkin.checked_in_at, "latitude": checkin.in_lat, "longitude": checkin.in_lng,
-            "notes": notes, "has_order": has_order, "order_items": order_items or [], "followup": followup, "client_request_id": client_request_id,
+            "location_accuracy_m": checkin.in_accuracy_m, "notes": notes, "has_order": has_order, "order_items": order_items or [], "followup": followup, "client_request_id": client_request_id,
             "photo_ids": photo_ids or [],
         })
         Visit.objects.filter(pk=visit.pk).update(location_source="gps_checkin", location_captured_at=checkin.checked_in_at)

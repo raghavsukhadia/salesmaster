@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { Camera, CircleAlert, ImageUp, LoaderCircle, RefreshCw, X } from 'lucide-react'
+import { Camera, CircleAlert, ImageUp, LoaderCircle, RefreshCw, ScanText, X } from 'lucide-react'
 import { Button } from '../components/ui'
 import CameraCapture, { cameraAvailable, type CameraFailure } from './CameraCapture'
-import { CARD_PHOTOS, nextPhotoPrompt } from './scanShots.ts'
+import { canRead, nextPhotoPrompt } from './scanShots.ts'
 import type { ScanState } from './types.ts'
 
 const MAX_BYTES = 15 * 1024 * 1024
@@ -41,11 +41,13 @@ function Thumbs({ urls, label, size, onRemove }: { urls: string[]; label: string
   )
 }
 
-/** The Scan Card tab: two photos of the card (front, then back) from the camera or a file, and the progress of reading them. Reviewing the result is the parent's form. */
-export default function ScanPanel({ scan, onFile, onRemoveShot, onCameraOpen, onCameraClosed, onCameraFailed, onReset }: {
+/** The Scan Card tab: the front of the card (required) and optionally the back, from the camera or a file, and the progress of reading them. Reviewing the result is the parent's form. */
+export default function ScanPanel({ scan, onFile, onRead, onRemoveShot, onCameraOpen, onCameraClosed, onCameraFailed, onReset }: {
   scan: ScanState
   /** A photo to add, from the camera or from the file picker. */
   onFile: (photo: Blob) => void
+  /** Read the card with the photos taken so far (the front alone is enough). */
+  onRead: () => void
   /** Drop one of the photos taken so far, to retake it. */
   onRemoveShot: (index: number) => void
   onCameraOpen: () => void
@@ -75,7 +77,7 @@ export default function ScanPanel({ scan, onFile, onRemoveShot, onCameraOpen, on
 
   const busy = scan.phase === 'reading'
   const stage = scan.progress?.stage ?? 'preparing'
-  const stageText = stage === 'reading' ? `Reading photo ${scan.readingPhoto ?? 1} of ${CARD_PHOTOS}…`
+  const stageText = stage === 'reading' ? (taken > 1 ? `Reading photo ${scan.readingPhoto ?? 1} of ${taken}…` : 'Reading the card…')
     : stage === 'loading' ? 'Loading the card reader (first time only)…' : 'Preparing the photos…'
 
   return (
@@ -98,6 +100,12 @@ export default function ScanPanel({ scan, onFile, onRemoveShot, onCameraOpen, on
         <>
           <p className="text-sm font-semibold text-slate-900" aria-live="polite">{prompt}</p>
           {taken > 0 && <Thumbs urls={previews} label="Card photos taken" size="h-24 w-36" onRemove={onRemoveShot} />}
+          {canRead(taken) && (
+            <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary-soft p-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-xs text-slate-600">The front is enough. Add the back only if it has more details (address, more numbers).</p>
+              <Button onClick={onRead} className="shrink-0"><ScanText size={16} aria-hidden />Read card now</Button>
+            </div>
+          )}
           <div className="grid gap-3 sm:grid-cols-2">
             <button type="button" onClick={takePhoto}
               className="group flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-slate-300 bg-white px-4 py-8 text-center transition-colors hover:border-primary hover:bg-primary-soft focus-visible:border-primary">
@@ -151,7 +159,7 @@ export default function ScanPanel({ scan, onFile, onRemoveShot, onCameraOpen, on
         <div className="flex flex-col gap-3 rounded-xl border bg-slate-50 p-3 sm:flex-row sm:items-center">
           {previews.length > 0 && <Thumbs urls={previews} label="Scanned card photos" size="h-20 w-28 sm:h-24 sm:w-32" />}
           <div className="min-w-0 flex-1 text-sm">
-            <p className="font-medium text-slate-900">Card scanned ({taken} photos)</p>
+            <p className="font-medium text-slate-900">Card scanned ({taken} {taken === 1 ? 'photo' : 'photos'})</p>
             <p className="text-xs text-slate-500">Check the details below against the card and correct anything that was misread.</p>
           </div>
           <Button variant="secondary" size="sm" onClick={onReset}><RefreshCw size={14} aria-hidden />Scan again</Button>

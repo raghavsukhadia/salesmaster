@@ -109,8 +109,8 @@ class ProductDetailView(APIView):
         return Response(row(p))
 
 
-def _read_rows(upload):
-    """Yields (name, category, description) from an .xlsx or .csv with a header row."""
+def read_sheet(upload):
+    """Raw rows (header first) from an uploaded .xlsx or .csv. Size and format are checked; the caller checks columns."""
     data = upload.read()
     if len(data) > MAX_IMPORT_BYTES:
         raise ValidationError({"file": "File is too large (2 MB max)"})
@@ -132,13 +132,19 @@ def _read_rows(upload):
         raise ValidationError({"file": "Upload an .xlsx or .csv file"})
     if not raw:
         raise ValidationError({"file": "The file is empty"})
+    if len(raw) - 1 > MAX_IMPORT_ROWS:
+        raise ValidationError({"file": f"Too many rows ({MAX_IMPORT_ROWS} max)"})
+    return raw
+
+
+def _read_rows(upload):
+    """(name, category, description) per row of an .xlsx or .csv with a header row."""
+    raw = read_sheet(upload)
     header = [str(c or "").strip().lower() for c in raw[0]]
     if "name" not in header:
         raise ValidationError({"file": "The first row must have a Name column (Category and Description are optional)"})
     idx = {k: header.index(k) if k in header else None for k in ("name", "category", "description")}
     body = raw[1:]
-    if len(body) > MAX_IMPORT_ROWS:
-        raise ValidationError({"file": f"Too many rows ({MAX_IMPORT_ROWS} max)"})
 
     def cell(r, k):
         i = idx[k]

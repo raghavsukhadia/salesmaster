@@ -1,4 +1,7 @@
+from decimal import Decimal
+
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import NotFound, ValidationError
 
@@ -88,6 +91,35 @@ def _create_dealer(salesman, data) -> Dealer:
     return dealer
 
 
+def adopt_salesman_location(salesman, dealer, latitude, longitude, accuracy_m=None, *, via) -> bool:
+    """A dealer with no shop location takes the salesman's GPS reading at the shop, unverified (management verifies it
+    in Dealer Locations). Never overwrites a location already on file. Returns True when it set one."""
+    from apps.field.geo import valid_coordinate
+
+    if latitude is None or longitude is None or not valid_coordinate(latitude, longitude):
+        return False
+    if dealer.latitude is not None and dealer.longitude is not None and valid_coordinate(dealer.latitude, dealer.longitude):
+        return False
+    updated = Dealer.objects.filter(pk=dealer.pk).filter(
+        Q(latitude__isnull=True) | Q(longitude__isnull=True) | Q(latitude=0, longitude=0)
+    ).update(
+        latitude=round(Decimal(str(latitude)), 6), longitude=round(Decimal(str(longitude)), 6),
+        location_accuracy_m=accuracy_m, location_source=Dealer.LocationSource.GPS_CHECKIN,
+        location_verified_at=None, location_verified_by=None,
+    )
+    if not updated:
+        return False
+    dealer.refresh_from_db(fields=["latitude", "longitude", "location_accuracy_m", "location_source",
+                                   "location_verified_at", "location_verified_by"])
+    from apps.field.models import FieldAuditLog
+    from apps.field.services import audit
+    audit(salesman.user, FieldAuditLog.Action.DEALER_LOCATION_SET, salesman=salesman, dealer_id=dealer.id, via=via,
+          before={"latitude": None, "longitude": None, "verified": False},
+          after={"latitude": dealer.latitude, "longitude": dealer.longitude, "accuracy_m": accuracy_m,
+                 "verified": False, "source": dealer.location_source})
+    return True
+
+
 def _resolve_order_items(items):
     ids = {i["product_id"] for i in items if i.get("product_id")}
     products = {p.id: p for p in Product.objects.filter(id__in=ids)}
@@ -131,6 +163,9 @@ def record_visit(user, data) -> tuple[Visit, bool]:
                 dealer = accessible_dealers(user).select_for_update().filter(pk=dealer_id).first()
                 if dealer is None:
                     raise NotFound("Dealer not found")
+                # First visit to a dealer with no shop location: the salesman's reading becomes it (unverified).
+                adopt_salesman_location(salesman, dealer, data.get("latitude"), data.get("longitude"),
+                                        data.get("location_accuracy_m"), via="visit")
             else:
                 new = data["new_dealer"]
                 match = check_dealer_duplicate(

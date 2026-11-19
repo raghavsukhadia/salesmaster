@@ -138,6 +138,30 @@ def test_existing_owned_dealer_visit_without_order(sm):
     assert DealerOwnershipHistory.objects.filter(dealer=d).count() == 1
 
 
+def test_visit_to_dealer_without_location_adopts_salesman_gps_unverified(sm):
+    user, salesman = sm
+    d = Dealer.objects.create(name="A.M. car house", city="Gwalior")
+    DealerOwnershipHistory.objects.create(dealer=d, salesman=salesman)
+    r = client_for(user).post(URL, {"dealer_id": d.id, "latitude": "26.218300", "longitude": "78.182800", "location_accuracy_m": 9}, format="json")
+    assert r.status_code == 201, r.data
+    d.refresh_from_db()
+    assert (str(d.latitude), str(d.longitude), d.location_accuracy_m) == ("26.218300", "78.182800", 9.0)
+    assert d.location_source == "gps_checkin" and d.location_verified_at is None
+    admin = User.objects.create_user("boss", password="x", role=Role.ADMIN)
+    h = client_for(admin).get(f"/api/management/dealers/{d.id}/location/").data["history"]
+    assert len(h) == 1 and h[0]["event"] == "captured" and h[0]["by_role"] == "salesman"
+
+
+def test_visit_never_overwrites_an_existing_dealer_location(sm):
+    user, salesman = sm
+    d = Dealer.objects.create(name="Located", city="X", latitude="18.520400", longitude="73.856700", location_source="manual")
+    DealerOwnershipHistory.objects.create(dealer=d, salesman=salesman)
+    r = client_for(user).post(URL, {"dealer_id": d.id, "latitude": "19.000000", "longitude": "74.000000"}, format="json")
+    assert r.status_code == 201, r.data
+    d.refresh_from_db()
+    assert (str(d.latitude), str(d.longitude), d.location_source) == ("18.520400", "73.856700", "manual")
+
+
 def test_granted_dealer_allowed_inaccessible_dealer_hidden(sm, other):
     user, salesman = sm
     _, bob = other

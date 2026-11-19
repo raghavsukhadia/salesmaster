@@ -234,7 +234,7 @@ def location_history(dealer_id: int) -> list[dict]:
         lat, lng = pos.get("latitude"), pos.get("longitude")
         if r.action == A.DEALER_LOCATION_VERIFY:
             event = "verified"
-        elif d.get("via") == "new_dealer_form":
+        elif d.get("via") in ("new_dealer_form", "visit", "checkin"):
             event = "captured"
         else:
             event = "updated"

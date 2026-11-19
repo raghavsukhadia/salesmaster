@@ -186,6 +186,36 @@ test('a second line is NOT joined when it is a person, a tagline in another case
   assert.equal(card(['GUPTA MOTORS', 'AND SONS PRIVATE LIMITED COMPANY', 'Mob: 9876543210']).name, 'GUPTA MOTORS') // would exceed six words
 })
 
+test('mobile numbers in other groupings, and OCR letter/digit mix-ups inside them', () => {
+  for (const s of ['987 654 3210', '98 7654 3210', 'Mob: 9876 543 210', '+91 98765-432l0', 'Ph: 98765 4321O', 'Cell 98765 43 210']) {
+    assert.equal(parseCard(`Raj Traders\n${s}`).phone, '9876543210', s)
+  }
+  // landlines still never count, and a short run of digits is not stretched into a mobile
+  assert.equal(parseCard('Raj Traders\nTel: 0712 274 5678').phone, '')
+  assert.equal(parseCard('Raj Traders\nShop 9, 12 Lane').phone, '')
+})
+
+test('an "Add:" address with no road words is still read, including the line it wraps onto', () => {
+  const r = card(['PATIL CAR CARE', 'Add: 14, Gandhi Bhavan,', 'Sitabuldi, Nagpur - 440012', 'Mob: 98220 12345'])
+  assert.equal(r.address, '14, Gandhi Bhavan, Sitabuldi, Nagpur - 440012')
+  assert.equal(r.city, 'Nagpur')
+  assert.equal(r.pincode, '440012')
+  assert.equal(r.phone, '9822012345')
+  assert.equal(r.name, 'PATIL CAR CARE')
+})
+
+test('an address line ending in a comma carries on to the next line', () => {
+  const r = card(['Raj Traders', 'Gala No. 4, Sai Krupa,', 'Kalyan West', 'Thane 421301, Maharashtra', 'Mob: 9876543210'])
+  assert.equal(r.address, 'Gala No. 4, Sai Krupa, Kalyan West, Thane 421301, Maharashtra')
+  assert.equal(r.city, 'Thane')
+})
+
+test('a pincode printed in two groups is read on an address line', () => {
+  const r = card(['Raj Traders', 'Near Bus Stand, Wardha - 442 001', 'Mob: 9876543210'])
+  assert.equal(r.pincode, '442001')
+  assert.equal(r.city, 'Wardha')
+})
+
 test('a one-word brand and initials-style names are kept whole', () => {
   assert.equal(card(['Zenith', 'Mob: 9876543210']).name, 'Zenith')
   assert.equal(card(['R K Traders', 'Mob: 9876543210']).name, 'R K Traders')

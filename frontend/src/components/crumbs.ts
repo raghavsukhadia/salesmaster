@@ -19,6 +19,7 @@ const STATIC: Record<string, Crumb[]> = {
   '/dealers/ownership-cleanup': [{ label: 'Management' }, { label: 'Ownership Cleanup' }],
   '/dealers/access-grants': [{ label: 'Management' }, { label: 'Access Grants' }],
   '/dealers/transfer': [{ label: 'Management' }, { label: 'Transfer Area' }],
+  '/dealers/import': [{ label: 'Management' }, { label: 'Import Dealers' }],
   '/my-dealers': [{ label: 'My Dealers' }],
   '/dealer-locations': [{ label: 'Management' }, { label: 'Dealer Locations' }],
   '/field-map': [{ label: 'Live Salesman Tracking' }],

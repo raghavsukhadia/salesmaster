@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Badge, fmtDate, PageHeader, Pager, Pills, qs, SearchBox, Select, StatStrip, Table, useApi, useDebounced } from '../../components/ui'
+import { Badge, buttonClass, fmtDate, PageHeader, Pager, Pills, qs, SearchBox, Select, StatStrip, Table, useApi, useDebounced } from '../../components/ui'
 
 interface Row { id: number; due_date: string; salesman: string; dealer: string; location: string; title: string; priority: string; outcome: string; state: string }
 interface Data { summary: { overdue: number; due_today: number; upcoming: number; completed: number; no_response: number }; count: number; results: Row[] }
@@ -42,7 +42,7 @@ export default function FollowupsManagement() {
               <td className="px-3 capitalize text-slate-500">{f.priority}</td>
               <td className="px-3">{OUTCOME[f.outcome] ?? '—'}</td>
               <td className="px-3"><Badge tone={tone}>{label}</Badge></td>
-              <td className="px-3"><Link to={`/followups-management/${f.id}`} className="text-primary hover:underline">View</Link></td>
+              <td className="px-3"><Link to={`/followups-management/${f.id}`} className={buttonClass('soft', 'sm')}>View</Link></td>
             </tr>
           )
         })}

@@ -98,6 +98,7 @@ class RecordVisitSerializer(serializers.Serializer):
     visited_at = serializers.DateTimeField(required=False)
     latitude = serializers.DecimalField(max_digits=9, decimal_places=6, min_value=-90, max_value=90, required=False)
     longitude = serializers.DecimalField(max_digits=9, decimal_places=6, min_value=-180, max_value=180, required=False)
+    location_accuracy_m = serializers.FloatField(min_value=0, max_value=100000, required=False)
     notes = serializers.CharField(required=False, allow_blank=True, max_length=5000)
     has_order = serializers.BooleanField(default=False)
     order_items = OrderItemSerializer(many=True, required=False, max_length=50)

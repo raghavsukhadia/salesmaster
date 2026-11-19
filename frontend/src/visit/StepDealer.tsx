@@ -9,7 +9,7 @@ import { parseCard, type CardField } from './cardParser.ts'
 import { CARD_DRAFT_KEYS, draftPayload, EMPTY_DRAFT, hasLocation, LOCATION_KEYS, validateDraft, type DealerDraft } from './dealerDraft.ts'
 import DealerPicker from './DealerPicker'
 import ScanPanel from './ScanPanel'
-import { addShot, removeShot } from './scanShots.ts'
+import { addShot, canRead, removeShot } from './scanShots.ts'
 import type { Chosen, DealerLite, DealerMode, DealerState } from './types.ts'
 
 const TABS: { mode: DealerMode; label: string; icon: typeof ScanLine }[] = [
@@ -59,9 +59,8 @@ function LocationField({ draft, set, error }: { draft: DealerDraft; set: (k: key
 
   return (
     <div id="shop-location" className={`sm:col-span-2 rounded-lg border p-3 sm:p-4 ${error && !has ? 'border-red-300 bg-red-50' : 'bg-slate-50'}`}>
-      <p className="text-sm font-medium text-slate-700">Shop location <span className="text-red-600" aria-hidden>*</span></p>
-      <p className="mt-0.5 text-xs text-slate-500">Required. Tap this while you are at the shop. Your manager sees where and when it was captured.</p>
-      <div className="mt-3 flex flex-wrap items-center gap-3">
+      <p className="text-sm font-medium text-slate-700">Shop location <span className="text-red-600" aria-hidden>*</span><span className="sr-only">(required)</span></p>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
         <Button variant="secondary" onClick={detect} loading={busy}>
           {!busy && <MapPin size={16} aria-hidden />}{busy ? 'Detecting…' : has ? 'Detect again' : 'Detect current location'}
         </Button>
@@ -90,13 +89,13 @@ function DealerFields({ draft, set, errors, filled }: { draft: DealerDraft; set:
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="sm:col-span-2"><Field label="Business name *" error={errors.name}>{text('name', { autoComplete: 'off', maxLength: 200 })}</Field></div>
-      <Field label="Phone *" error={errors.phone} hint="Unique 10-digit mobile; dealer names may repeat">{text('phone', { type: 'tel', inputMode: 'tel', autoComplete: 'off', maxLength: 20 })}</Field>
+      <div className="sm:col-span-2"><Field label="Phone *" error={errors.phone} hint="Unique 10-digit mobile; dealer names may repeat">{text('phone', { type: 'tel', inputMode: 'tel', autoComplete: 'off', maxLength: 20 })}</Field></div>
+      <LocationField draft={draft} set={set} error={errors.location} />
       <Field label="City *" error={errors.city}>{text('city', { autoComplete: 'off', maxLength: 80 })}</Field>
       <Field label="State *" error={errors.state}>
         {(p) => <StateSelect id={p.id} value={draft.state} onChange={(v) => set('state', v)} className={`${p.className} ${tint(filled, 'state')}`} />}
       </Field>
       <Field label="Pincode *" error={errors.pincode}>{text('pincode', { inputMode: 'numeric', maxLength: 6, autoComplete: 'off' })}</Field>
-      <LocationField draft={draft} set={set} error={errors.location} />
       <div className="sm:col-span-2">
         <Field label="Address *" error={errors.address}>
           {(p) => <textarea {...p} rows={2} value={draft.address} onChange={(e) => set('address', e.target.value)} className={`${p.className} h-auto py-2 ${tint(filled, 'address')}`} />}
@@ -132,11 +131,11 @@ export default function StepDealer({ state, update, onContinue }: { state: Deale
     setErrors({}); setNote(''); setDuplicate(null)
   }
 
-  /** A card photo arrived (camera or upload). The card is read as soon as it has both its photos. */
+  /** A card photo arrived (camera or upload). After the front the salesman can read it or add the back; with both, reading starts by itself. */
   function addPhoto(photo: Blob) {
-    const { shots, ready } = addShot(scan.shots, photo)
+    const { shots, full } = addShot(scan.shots, photo)
     setErrors({}); setNote(''); setDuplicate(null)
-    if (!ready) return update({ scan: { phase: 'idle', shots } })
+    if (!full) return update({ scan: { phase: 'idle', shots } })
     void readPhotos(shots)
   }
 
@@ -184,7 +183,7 @@ export default function StepDealer({ state, update, onContinue }: { state: Deale
       if (!selected) return setNote('Select one of your dealers to continue.')
       return onContinue({ kind: 'existing', dealer: selected })
     }
-    if (mode === 'scan' && scan.phase !== 'done') return setNote('Take both photos of the card (front and back) first, or use Enter Manually.')
+    if (mode === 'scan' && scan.phase !== 'done') return setNote(canRead(scan.shots?.length ?? 0) ? 'Tap "Read card now" first, or use Enter Manually.' : 'Take a photo of the front of the card first, or use Enter Manually.')
     const bad = validateDraft(draft)
     if (Object.keys(bad).length) return setErrors(bad)
     setChecking(true)
@@ -223,7 +222,7 @@ export default function StepDealer({ state, update, onContinue }: { state: Deale
 
       <div role="tabpanel" className="mt-5 space-y-5">
         {mode === 'scan' && (
-          <ScanPanel scan={scan} onFile={addPhoto}
+          <ScanPanel scan={scan} onFile={addPhoto} onRead={() => { if (canRead(scan.shots?.length ?? 0)) void readPhotos(scan.shots!) }}
             onRemoveShot={(i) => update((s) => ({ scan: { ...s.scan, shots: removeShot(s.scan.shots, i) } }))}
             onCameraOpen={() => update((s) => ({ scan: { ...s.scan, phase: 'camera', message: undefined } }))}
             onCameraClosed={() => update((s) => ({ scan: { ...s.scan, phase: s.scan.filled ? 'done' : 'idle' } }))}

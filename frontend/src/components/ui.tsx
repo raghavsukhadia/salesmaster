@@ -38,13 +38,20 @@ export { fieldErrors, flatten, fmtDate, fmtRelative, fmtTime, qs } from './logic
 
 /* ───────────────────────── primitives ───────────────────────── */
 
-export type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent'
+/**
+ * Buttons say what they do by colour: primary = the section's main action (in the section colour), soft = open / view / edit,
+ * secondary = neutral, warning = reversible but notable (deactivate), danger / dangerSoft = destructive.
+ */
+export type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'accent' | 'soft' | 'warning' | 'dangerSoft'
 const VARIANT: Record<Variant, string> = {
-  primary: 'bg-primary text-white hover:bg-primary-hover',
+  primary: 'bg-primary text-white shadow-sm hover:bg-primary-hover',
   secondary: 'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50',
   ghost: 'text-slate-700 hover:bg-slate-100',
   danger: 'bg-red-600 text-white hover:bg-red-700',
-  accent: 'bg-accent text-primary hover:brightness-95', // navy on orange is 5.5:1; white on orange is not AA
+  accent: 'bg-accent text-[#0b2347] hover:brightness-95', // navy on orange is 5.5:1; white on orange is not AA
+  soft: 'border border-primary-line bg-primary-soft text-primary hover:bg-primary-line',
+  warning: 'border border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100',
+  dangerSoft: 'border border-red-200 bg-red-50 text-red-700 hover:bg-red-100',
 }
 
 /** Class string so <Link> and <a> can look exactly like <Button>. */
@@ -97,7 +104,7 @@ export function PageHeader({ title, subtitle, action, inlineAction }: { title: s
     return (
       <div className="mb-6">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="min-w-0 text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
+          <h1 className="flex min-w-0 items-center gap-3 text-2xl font-semibold tracking-tight text-slate-900"><span aria-hidden className="h-7 w-1.5 shrink-0 rounded-full bg-primary" />{title}</h1>
           {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
         </div>
         {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
@@ -107,8 +114,8 @@ export function PageHeader({ title, subtitle, action, inlineAction }: { title: s
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+        <h1 className="flex items-center gap-3 text-2xl font-semibold tracking-tight text-slate-900"><span aria-hidden className="h-7 w-1.5 shrink-0 rounded-full bg-primary" />{title}</h1>
+        {subtitle && <p className="mt-1 pl-[1.125rem] text-sm text-slate-500">{subtitle}</p>}
       </div>
       {action && <div className="flex flex-wrap items-center gap-2">{action}</div>}
     </div>
@@ -119,8 +126,8 @@ export function StatStrip({ items }: { items: { label: string; value: number | s
   return (
     <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-[repeat(var(--n),minmax(0,1fr))]" style={{ '--n': items.length } as React.CSSProperties}>
       {items.map((i) => (
-        <Card key={i.label} className="px-4 py-3">
-          <div className={`text-xl font-semibold tabular-nums ${i.tone === 'red' ? 'text-red-700' : i.tone === 'amber' ? 'text-amber-800' : 'text-slate-900'}`}>{i.value}</div>
+        <Card key={i.label} className={`border-t-[3px] px-4 py-3 ${i.tone === 'red' ? 'border-t-red-500' : i.tone === 'amber' ? 'border-t-amber-500' : 'border-t-primary'}`}>
+          <div className={`text-xl font-semibold tabular-nums ${i.tone === 'red' ? 'text-red-700' : i.tone === 'amber' ? 'text-amber-800' : 'text-primary'}`}>{i.value}</div>
           <div className="text-xs text-slate-500">{i.label}</div>
         </Card>
       ))}
@@ -389,7 +396,7 @@ export function Table({ head, children, empty, loading, error, emptyTitle = 'Not
     <div className="overflow-hidden rounded-xl border bg-white shadow-card">
       <div className="overflow-x-auto">
         <table className={`w-full text-left text-sm ${stack ? 'stack-table sm:min-w-[640px]' : 'min-w-[640px]'}`}>
-          <thead className="border-b bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
+          <thead className="border-b border-primary-line bg-primary-soft text-xs font-semibold uppercase tracking-wide text-primary">
             <tr>
               {head.map((h) => (
                 <th key={h.label} scope="col" aria-sort={h.sorted === 'asc' ? 'ascending' : h.sorted === 'desc' ? 'descending' : undefined}

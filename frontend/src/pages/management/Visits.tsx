@@ -41,7 +41,7 @@ export default function Visits() {
             <td className="text-slate-600 sm:max-w-[14rem] sm:truncate" title={v.products.join(', ')}>{v.products.length ? v.products.join(', ') : '—'}</td>
             <td>{v.has_order ? <Badge tone="green">Order placed</Badge> : <Badge tone="gray">No order</Badge>}</td>
             <td className="text-slate-700 sm:whitespace-nowrap">{fmtDate(v.followup_due, true)}</td>
-            <td className="text-right" data-label=""><Link to={`/visits/${v.id}`} aria-label={`View visit to ${v.dealer}`} className={buttonClass('secondary', 'sm', 'max-sm:h-10 max-sm:w-full')}><Eye size={14} aria-hidden />View</Link></td>
+            <td className="text-right" data-label=""><Link to={`/visits/${v.id}`} aria-label={`View visit to ${v.dealer}`} className={buttonClass('soft', 'sm', 'max-sm:h-10 max-sm:w-full')}><Eye size={14} aria-hidden />View</Link></td>
           </tr>
         ))}
       </Table>

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { api, ApiError } from '../../auth'
-import { Badge, fmtDate, flatten, Modal, Pager, useApi, useDebounced, qs } from '../../components/ui'
+import { Badge, buttonClass, fmtDate, flatten, Modal, Pager, useApi, useDebounced, qs } from '../../components/ui'
 
 interface Product { id: number; name: string; category: string; description: string; is_active: boolean; updated_at: string }
 interface Resp { summary: { total: number; active: number; inactive: number }; count: number; page_size: number; results: Product[] }
@@ -169,8 +169,8 @@ export default function Products() {
                 <td className="px-4"><Badge tone={p.is_active ? 'green' : 'gray'}>{p.is_active ? 'Active' : 'Inactive'}</Badge></td>
                 <td className="px-4 text-slate-500">{fmtDate(p.updated_at)}</td>
                 <td className="px-4"><div className="flex justify-end gap-2">
-                  <button className={`${btn} px-2.5 py-1 text-xs`} onClick={() => setEdit(p)}>Edit</button>
-                  <button className={`${btn} px-2.5 py-1 text-xs`} disabled={busyId === p.id} onClick={() => toggle(p)}>{p.is_active ? 'Deactivate' : 'Activate'}</button>
+                  <button className={buttonClass('soft', 'sm')} onClick={() => setEdit(p)}>Edit</button>
+                  <button className={buttonClass(p.is_active ? 'warning' : 'primary', 'sm')} disabled={busyId === p.id} onClick={() => toggle(p)}>{p.is_active ? 'Deactivate' : 'Activate'}</button>
                 </div></td>
               </tr>
             ))}

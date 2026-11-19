@@ -134,12 +134,12 @@ export default function Salesmen() {
             </td>
             <td data-label="">
               <div className="flex flex-wrap gap-2 sm:justify-end">
-                <Link to={`/salesmen/${s.id}`} className={buttonClass('secondary', 'sm')}>Edit</Link>
-                <Button size="sm" variant="secondary" disabled={busyId === s.id} onClick={() => toggle(s)}>{s.active ? 'Deactivate' : 'Activate'}</Button>
+                <Link to={`/salesmen/${s.id}`} className={buttonClass('soft', 'sm')}>Edit</Link>
+                <Button size="sm" variant={s.active ? 'warning' : 'primary'} disabled={busyId === s.id} onClick={() => toggle(s)}>{s.active ? 'Deactivate' : 'Activate'}</Button>
                 {admin && (
                   <>
                     <Link to={`/salesmen/${s.id}#offboard`} className={buttonClass('secondary', 'sm')}>Offboard</Link>
-                    <Button size="sm" variant="secondary" className="!text-red-600 hover:!bg-red-50" disabled={busyId === s.id} onClick={() => remove(s)}>Delete</Button>
+                    <Button size="sm" variant="dangerSoft" disabled={busyId === s.id} onClick={() => remove(s)}>Delete</Button>
                   </>
                 )}
               </div>

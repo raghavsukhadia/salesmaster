@@ -5,12 +5,6 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 
-  /* Navy: primary actions, active states, headings. */
-  --color-primary: #0b2347;
-  --color-primary-hover: #14305c;
-  --color-primary-soft: #eef2f8;
-  --color-primary-line: #d3dcea;
-
   /* Orange: brand accent (logo arrow). #ff6b1a is for fills and indicators; use accent-ink for text on white. */
   --color-accent: #ff6b1a;
   --color-accent-soft: #fff1e8;
@@ -20,6 +14,19 @@
   --shadow-pop: 0 8px 24px rgb(11 35 71 / 0.12), 0 2px 6px rgb(11 35 71 / 0.08);
 }
 
+/*
+ * Primary actions, active states and highlights take the colour of the section you are in (Dealers green, Visits amber...),
+ * so each part of the app is recognisable at a glance. AppShell / Sidebar set --section* (see nav.ts toneStyle);
+ * outside them (login) the brand navy is the fallback. "inline" makes utilities read the variable where they are used,
+ * so a nested element (each sidebar item) can carry its own colour.
+ */
+@theme inline {
+  --color-primary: var(--section, #0b2347);
+  --color-primary-hover: var(--section-hover, #14305c);
+  --color-primary-soft: var(--section-soft, #eef2f8);
+  --color-primary-line: var(--section-line, #d3dcea);
+}
+
 @layer base {
   /* Tailwind v4 defaults borders to currentColor (black). The app was written for a soft grey hairline. */
   *, ::after, ::before, ::backdrop, ::file-selector-button { border-color: var(--color-slate-200); }
@@ -27,15 +34,15 @@
   html { -webkit-text-size-adjust: 100%; }
   body { background: #fff; color: var(--color-slate-900); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
 
-  :focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--section, #0b2347); outline-offset: 2px; }
   .on-dark :focus-visible { outline-color: #fff; }
 
   input:not([type="checkbox"]):not([type="radio"]), select, textarea { transition: border-color 120ms, box-shadow 120ms; }
   input:not([type="checkbox"]):not([type="radio"]):focus-visible, select:focus-visible, textarea:focus-visible {
-    outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgb(11 35 71 / 0.14);
+    outline: none; border-color: var(--section, #0b2347); box-shadow: 0 0 0 3px color-mix(in srgb, var(--section, #0b2347) 16%, transparent);
   }
   input::placeholder, textarea::placeholder { color: var(--color-slate-400); }
-  input[type="checkbox"], input[type="radio"] { accent-color: var(--color-primary); }
+  input[type="checkbox"], input[type="radio"] { accent-color: var(--section, #0b2347); }
 }
 
 /*

@@ -1,21 +1,23 @@
-// Scan Card reads a visiting card from two photos: the front, then the back.
+// Scan Card reads a visiting card from one or two photos: the front (required), then optionally the back.
 // Kept apart from the React code so the "when is the card ready to read" rule can be tested on its own.
 
-/** Photos needed before the card is read. */
+/** Most photos a card can have (front and back). Taking the last one starts reading straight away. */
 export const CARD_PHOTOS = 2
+/** Photos needed before the card can be read: the front alone is enough. */
+export const MIN_CARD_PHOTOS = 1
 
-const SIDES = ['front of the card', 'back of the card']
-
-/** What to photograph next, given how many photos are already taken: "Photo 2 of 2: back of the card". */
+/** What to photograph next, given how many photos are already taken. */
 export function nextPhotoPrompt(taken: number): string {
-  const n = Math.min(Math.max(taken, 0), CARD_PHOTOS - 1)
-  return `Photo ${n + 1} of ${CARD_PHOTOS}: ${SIDES[n]}`
+  return taken <= 0 ? 'Photo 1: front of the card' : 'Photo 2 (optional): back of the card'
 }
 
-/** Adds a photo. `ready` is true once the card has all its photos and can be read. If somehow over-full, the newest photos win. */
-export function addShot(shots: readonly Blob[] | undefined, photo: Blob): { shots: Blob[]; ready: boolean } {
+/** The card has enough photos to be read now (the back can still be added). */
+export const canRead = (taken: number) => taken >= MIN_CARD_PHOTOS
+
+/** Adds a photo. `full` is true once both sides are in, so reading can start without asking. If somehow over-full, the newest photos win. */
+export function addShot(shots: readonly Blob[] | undefined, photo: Blob): { shots: Blob[]; full: boolean } {
   const next = [...(shots ?? []), photo].slice(-CARD_PHOTOS)
-  return { shots: next, ready: next.length === CARD_PHOTOS }
+  return { shots: next, full: next.length === CARD_PHOTOS }
 }
 
 /** Drops one photo so it can be retaken. */

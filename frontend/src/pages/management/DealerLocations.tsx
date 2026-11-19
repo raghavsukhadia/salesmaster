@@ -2,8 +2,46 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, ApiError } from '../../auth'
 import LeafletMap, { type MapMarker } from '../../components/LeafletMap'
-import { Badge, Button, flatten, Modal, PageHeader, Pager, Pills, SearchBox, StatStrip, Table, useApi, useDebounced, qs } from '../../components/ui'
+import { Badge, Button, flatten, fmtDate, fmtTime, Modal, PageHeader, Pager, Pills, SearchBox, StatStrip, Table, useApi, useDebounced, qs } from '../../components/ui'
 import { fmtAccuracy } from '../../field/format'
+
+interface LocEvent { id: number; at: string; event: 'captured' | 'updated' | 'verified'; by: string; by_role: string; latitude: number | null; longitude: number | null; accuracy_m: number | null }
+const EVENT_LABEL: Record<LocEvent['event'], [string, 'blue' | 'amber' | 'green']> = {
+  captured: ['Captured by salesman', 'blue'], updated: ['Location changed', 'amber'], verified: ['Verified', 'green'],
+}
+const SOURCE_LABEL: Record<string, string> = { manual: 'manual', map_pin: 'map pin', geocoded: 'geocoded', gps_checkin: 'salesman GPS', import: 'imported' }
+
+/** Who captured, changed or verified this dealer's location, and when. */
+function LocationHistory({ id }: { id: number }) {
+  const { data, loading, error } = useApi<{ history: LocEvent[] }>(`/api/management/dealers/${id}/location/`)
+  return (
+    <div className="mt-5 border-t pt-4">
+      <div className="mb-2 flex items-center justify-between">
+        <h3 className="text-xs font-medium uppercase text-slate-500">Location history</h3>
+        <Link to={`/dealers/${id}`} className="text-xs text-primary hover:underline">Full dealer history →</Link>
+      </div>
+      {loading && !data && <p className="text-sm text-slate-500">Loading…</p>}
+      {error && <p role="alert" className="text-sm text-red-600">Could not load the history.</p>}
+      {data && (data.history.length ? (
+        <ul className="max-h-48 divide-y overflow-y-auto text-sm">
+          {data.history.map((h) => (
+            <li key={h.id} className="flex flex-col gap-1 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <span className="flex flex-wrap items-center gap-2">
+                <Badge tone={EVENT_LABEL[h.event][1]}>{EVENT_LABEL[h.event][0]}</Badge>
+                <span>by <b>{h.by}</b>{h.by_role && <span className="text-slate-500"> ({h.by_role})</span>}</span>
+              </span>
+              <span className="text-slate-600">
+                {fmtDate(h.at, true)} {fmtTime(h.at)}
+                {h.latitude != null && h.longitude != null && ` · ${h.latitude.toFixed(5)}, ${h.longitude.toFixed(5)}`}
+                {h.accuracy_m != null && ` · ±${Math.round(h.accuracy_m)} m`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : <p className="text-sm text-slate-500">No location history yet. It is captured automatically the first time a salesman visits this dealer.</p>)}
+    </div>
+  )
+}
 
 type Mode = 'all' | 'missing' | 'unverified' | 'verified'
 interface Row {
@@ -80,6 +118,7 @@ function Editor({ row, onClose, onSaved }: { row: Row; onClose: () => void; onSa
           <p className="mt-2 text-xs text-slate-500">Click the map to place the pin, or type coordinates. Zoom in close to the shop entrance.</p>
         </div>
       </div>
+      <LocationHistory id={row.id} />
       <div className="mt-5 flex justify-end gap-3">
         <Button variant="secondary" onClick={onClose}>Cancel</Button>
         <Button disabled={!ok} loading={busy} onClick={() => void save()}>Save location</Button>
@@ -125,7 +164,7 @@ export default function DealerLocations() {
             <td className="px-3 py-3 text-slate-600">{[r.territory.city, r.territory.state].filter(Boolean).join(', ') || '—'}<div className="text-xs text-slate-500">{r.territory.covered_by.length ? `Covered by ${r.territory.covered_by.join(', ')}` : 'No salesman territory'}</div></td>
             <td className="px-3 py-3 text-slate-600">{r.contact ? <>{r.contact.name}<div className="text-xs text-slate-500">{r.contact.phone}</div></> : '—'}</td>
             <td className="px-3 py-3 font-mono text-xs text-slate-600">
-              {r.has_location ? <>{r.latitude?.toFixed(5)}, {r.longitude?.toFixed(5)}<div className="font-sans text-slate-500">{fmtAccuracy(r.accuracy_m)}{r.source ? ` · ${r.source.replace('_', ' ')}` : ''}</div></> : '—'}
+              {r.has_location ? <>{r.latitude?.toFixed(5)}, {r.longitude?.toFixed(5)}<div className="font-sans text-slate-500">{fmtAccuracy(r.accuracy_m)}{r.source ? ` · ${SOURCE_LABEL[r.source] ?? r.source.replace('_', ' ')}` : ''}</div></> : '—'}
             </td>
             <td className="px-3 py-3">{!r.has_location ? <Badge tone="red">No location</Badge> : r.verified ? <span title={`${r.verified_by ?? ''}`}><Badge tone="green">Verified</Badge></span> : <Badge tone="gray">Unverified</Badge>}</td>
             <td className="px-3 py-3 text-left sm:text-right sm:whitespace-nowrap">

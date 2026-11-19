@@ -69,14 +69,17 @@ export default function AlertsMenu({ me }: { me: Me }) {
         {unread && <span aria-hidden className="absolute right-2.5 top-2.5 size-2.5 rounded-full bg-accent ring-2 ring-white" />}
       </button>
       {open && (
-        <div role="dialog" aria-label="Alerts" className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-xl border bg-white shadow-pop">
+        // Phones: a full-width sheet just under the 4rem top bar, so it never runs off the left edge or covers the logo.
+        // Wider screens: a dropdown anchored under the bell.
+        <div role="dialog" aria-label="Alerts"
+          className="fixed inset-x-3 top-[4.5rem] z-50 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-xl border bg-white shadow-pop sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80">
           <div className="border-b px-4 py-3"><p className="text-sm font-semibold text-slate-900">Needs attention</p></div>
           {failed && !alerts && (
             <div role="alert" className="px-4 py-6 text-center text-sm text-red-600">Could not load alerts.<div className="mt-3"><Button size="sm" variant="secondary" onClick={load}>Try again</Button></div></div>
           )}
           {!failed && !alerts && <p role="status" className="px-4 py-6 text-center text-sm text-slate-500">Loading…</p>}
           {alerts?.length === 0 && (
-            <div className="flex flex-col items-center px-4 py-8 text-center"><CircleCheck size={24} className="mb-2 text-green-600" aria-hidden /><p className="text-sm font-medium text-slate-900">You’re all caught up</p><p className="mt-1 text-xs text-slate-500">Nothing is overdue or unassigned right now.</p></div>
+            <div className="flex flex-col items-center px-4 py-8 text-center"><CircleCheck size={24} className="mb-2 text-green-600" aria-hidden /><p className="text-sm font-medium text-slate-900">You’re all caught up</p><p className="mt-1 text-xs text-slate-500">{salesman ? 'No follow-ups are overdue or due today.' : 'Nothing is overdue or unassigned right now.'}</p></div>
           )}
           {alerts && alerts.length > 0 && (
             <ul className="p-1">

@@ -1,20 +1,24 @@
 /// <reference types="node" />
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { addShot, CARD_PHOTOS, nextPhotoPrompt, removeShot } from './scanShots.ts'
+import { addShot, canRead, CARD_PHOTOS, MIN_CARD_PHOTOS, nextPhotoPrompt, removeShot } from './scanShots.ts'
 
 const photo = (name: string) => new Blob([name], { type: 'image/jpeg' })
 
-test('a card needs two photos', () => {
+test('one photo is enough to read the card; two is the most', () => {
+  assert.equal(MIN_CARD_PHOTOS, 1)
   assert.equal(CARD_PHOTOS, 2)
+  assert.equal(canRead(0), false)
+  assert.equal(canRead(1), true)
+  assert.equal(canRead(2), true)
 })
 
-test('the card is not ready after one photo, and is ready after the second', () => {
+test('the card is full (read without asking) only after the second photo', () => {
   const first = addShot(undefined, photo('front'))
-  assert.equal(first.ready, false)
+  assert.equal(first.full, false)
   assert.equal(first.shots.length, 1)
   const second = addShot(first.shots, photo('back'))
-  assert.equal(second.ready, true)
+  assert.equal(second.full, true)
   assert.equal(second.shots.length, 2)
 })
 
@@ -28,21 +32,21 @@ test('photos keep the order they were taken in, and adding does not change the l
 
 test('a third photo can never make the list longer than two: the newest two are kept', () => {
   const [a, b, c] = [photo('a'), photo('b'), photo('c')]
-  const { shots, ready } = addShot([a, b], c)
+  const { shots, full } = addShot([a, b], c)
   assert.deepEqual(shots, [b, c])
-  assert.equal(ready, true)
+  assert.equal(full, true)
 })
 
-test('removing a photo takes the card back to "not ready" so it can be retaken', () => {
+test('removing a photo lets it be retaken', () => {
   const [a, b] = [photo('a'), photo('b')]
   assert.deepEqual(removeShot([a, b], 0), [b])
   assert.deepEqual(removeShot([a, b], 1), [a])
   assert.deepEqual(removeShot(undefined, 0), [])
-  assert.equal(addShot(removeShot([a, b], 0), photo('again')).ready, true)
+  assert.equal(addShot(removeShot([a, b], 0), photo('again')).full, true)
 })
 
-test('the prompt says which photo is next', () => {
-  assert.equal(nextPhotoPrompt(0), 'Photo 1 of 2: front of the card')
-  assert.equal(nextPhotoPrompt(1), 'Photo 2 of 2: back of the card')
-  assert.equal(nextPhotoPrompt(2), 'Photo 2 of 2: back of the card') // never runs past the last photo
+test('the prompt says which photo is next, and that the back is optional', () => {
+  assert.equal(nextPhotoPrompt(0), 'Photo 1: front of the card')
+  assert.equal(nextPhotoPrompt(1), 'Photo 2 (optional): back of the card')
+  assert.equal(nextPhotoPrompt(2), 'Photo 2 (optional): back of the card')
 })

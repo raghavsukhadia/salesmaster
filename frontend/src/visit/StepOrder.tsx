@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { ArrowLeft, CalendarClock, CircleAlert, MapPin, Minus, PackagePlus, Plus, Search, Trash2 } from 'lucide-react'
+import { ArrowLeft, CalendarClock, ChevronDown, CircleAlert, MapPin, Minus, PackagePlus, Plus, Search, Trash2 } from 'lucide-react'
 import { api, ApiError } from '../auth'
-import { Badge, Button, Card, flatten, qs, useApi, useDebounced } from '../components/ui'
+import { Badge, Button, Card, flatten, useApi } from '../components/ui'
 import { gpsMessage, quickReading } from '../field/gps.ts'
 import { tracker } from '../field/useTracker'
 import { draftPayload, hasLocation } from './dealerDraft.ts'
@@ -31,21 +31,64 @@ interface ProductLite { id: number; name: string; category: string }
 const input = 'h-10 w-full rounded-lg border bg-white px-3 text-sm'
 const lbl = 'mb-1 block text-xs font-medium text-slate-700'
 
-function ProductResults({ q, onPick }: { q: string; onPick: (p: ProductLite) => void }) {
-  const { data, loading } = useApi<ProductLite[]>(`/api/products/?${qs({ q })}`)
-  if (loading && !data) return <p role="status" className="text-sm text-slate-500">Searching…</p>
-  if (!data?.length) return <p className="text-sm text-slate-500">No product matches “{q}”. Add it as an other item below.</p>
+/** Dropdown of the whole active catalogue: opens on focus, narrows as the salesman types (name or category). */
+function ProductPicker({ onPick }: { onPick: (p: ProductLite) => void }) {
+  const { data, loading, error, reload } = useApi<ProductLite[]>('/api/products/')
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState(false)
+  const [active, setActive] = useState(0)
+
+  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean)
+  const matches = (data ?? []).filter((p) => {
+    const hay = `${p.name} ${p.category}`.toLowerCase()
+    return words.every((w) => hay.includes(w))
+  })
+
+  function pick(p: ProductLite) {
+    onPick(p); setQ(''); setActive(0); setOpen(false)
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setActive((i) => Math.min(i + 1, matches.length - 1)) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((i) => Math.max(i - 1, 0)) }
+    else if (e.key === 'Enter' && open && matches[active]) { e.preventDefault(); pick(matches[active]) }
+    else if (e.key === 'Escape') setOpen(false)
+  }
+
   return (
-    <ul className="divide-y overflow-hidden rounded-lg border bg-white">
-      {data.map((p) => (
-        <li key={p.id}>
-          <button type="button" onClick={() => onPick(p)} className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm hover:bg-slate-50">
-            <span className="min-w-0 truncate font-medium text-slate-900">{p.name}</span>
-            <span className="flex shrink-0 items-center gap-2 text-xs text-slate-500">{p.category}<Plus size={14} className="text-primary" aria-hidden /></span>
-          </button>
-        </li>
-      ))}
-    </ul>
+    <div className="relative">
+      <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />
+      <input id="product-search" role="combobox" aria-expanded={open} aria-controls="product-options" aria-autocomplete="list"
+        aria-activedescendant={open && matches[active] ? `product-opt-${matches[active].id}` : undefined}
+        placeholder="Search or choose a product" value={q} autoComplete="off" className={`${input} pl-9 pr-9`}
+        onChange={(e) => { setQ(e.target.value); setActive(0); setOpen(true) }}
+        onFocus={() => setOpen(true)} onClick={() => setOpen(true)} onBlur={() => setOpen(false)} onKeyDown={onKeyDown} />
+      <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />
+
+      {open && (
+        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border bg-white shadow-lg">
+          {loading && !data ? <p role="status" className="px-3 py-2.5 text-sm text-slate-500">Loading products…</p>
+            : error && !data ? (
+              <p className="px-3 py-2.5 text-sm text-red-700">Could not load products.{' '}
+                <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={reload} className="font-medium underline">Try again</button></p>
+            ) : matches.length === 0 ? (
+              <p className="px-3 py-2.5 text-sm text-slate-500">{q.trim() ? <>No product matches “{q.trim()}”. Add it as an other item below.</> : 'No products in the catalogue yet.'}</p>
+            ) : (
+              <ul id="product-options" role="listbox" aria-label="Products" className="max-h-72 divide-y overflow-y-auto">
+                {matches.map((p, i) => (
+                  <li key={p.id} id={`product-opt-${p.id}`} role="option" aria-selected={i === active}
+                    // mousedown would blur the input (closing the list) before the click lands
+                    onMouseDown={(e) => e.preventDefault()} onClick={() => pick(p)} onMouseEnter={() => setActive(i)}
+                    className={`flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 text-sm ${i === active ? 'bg-slate-50' : ''}`}>
+                    <span className="min-w-0 truncate font-medium text-slate-900">{p.name}</span>
+                    <span className="flex shrink-0 items-center gap-2 text-xs text-slate-500">{p.category}<Plus size={14} className="text-primary" aria-hidden /></span>
+                  </li>
+                ))}
+              </ul>
+            )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -59,8 +102,6 @@ export default function StepOrder({ chosen, order, setOrder, requestId, onBack, 
   /** A "new" dealer turned out to exist already: switch the visit over to it. */
   onUseDealer: (d: DealerLite) => void
 }) {
-  const [pq, setPq] = useState('')
-  const dpq = useDebounced(pq)
   const [custom, setCustom] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
@@ -101,7 +142,7 @@ export default function StepOrder({ chosen, order, setOrder, requestId, onBack, 
   }
 
   // The visit's location is the one tapped here; failing that, the position detected on the new-dealer form (the salesman was at the shop).
-  const place = geo ? { latitude: geo.lat.toFixed(6), longitude: geo.lng.toFixed(6) }
+  const place = geo ? { latitude: geo.lat.toFixed(6), longitude: geo.lng.toFixed(6), ...(Number.isFinite(geo.accuracy_m) && { location_accuracy_m: geo.accuracy_m }) }
     : chosen.kind === 'new' && hasLocation(chosen.draft) ? { latitude: chosen.draft.latitude, longitude: chosen.draft.longitude } : null
 
   async function save(e: React.FormEvent) {
@@ -170,11 +211,7 @@ export default function StepOrder({ chosen, order, setOrder, requestId, onBack, 
           <div className="mt-5 space-y-4">
             <div>
               <label htmlFor="product-search" className={lbl}>Add a product from the catalogue</label>
-              <div className="relative">
-                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />
-                <input id="product-search" placeholder="Search products" value={pq} onChange={(e) => setPq(e.target.value)} autoComplete="off" className={`${input} pl-9`} />
-              </div>
-              {dpq.trim() && <div className="mt-2"><ProductResults q={dpq.trim()} onPick={(p) => { addLine({ product_id: p.id, product_name: p.name }); setPq('') }} /></div>}
+              <ProductPicker onPick={(p) => addLine({ product_id: p.id, product_name: p.name })} />
             </div>
 
             <div>

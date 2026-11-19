@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
-import { ArrowDown, ArrowUp, CircleAlert, Info, TriangleAlert, UserRound } from 'lucide-react'
+import { ArrowDown, ArrowUp, CircleAlert, Info, UserRound } from 'lucide-react'
 import { Card, DropdownSelect, ErrorState, Pills, Skeleton } from '../../components/ui'
 import { ChartCard } from './charts'
 import { fillPath, fmtCard, fmtDay, fmtInt, fmtMonth, fmtPct } from './format'
@@ -94,7 +94,6 @@ interface Props {
 export default function ReportView({ data, loading, error, onRetry, rowAction }: Props) {
   const [measure, setMeasure] = useState<Measure>('qty')
   const [printedAt] = useState(() => new Date().toLocaleString('en-GB'))
-  const { setFilters } = useReportParams()
 
   if (!data) {
     if (error) return <Card><ErrorState message="Could not load this report." onRetry={onRetry} /></Card>
@@ -133,19 +132,6 @@ export default function ReportView({ data, loading, error, onRetry, rowAction }:
 
       <div className={`transition-opacity ${loading ? 'opacity-60' : ''}`}>
         <Options data={data} />
-
-        {data.warnings.length > 0 && (
-          <div role="note" className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 print:break-inside-avoid">
-            {data.warnings.map((w) => <p key={w} className="flex gap-2"><TriangleAlert size={16} className="mt-0.5 shrink-0" aria-hidden />{w}</p>)}
-            <div className="mt-3 flex flex-wrap items-center gap-2 pl-6 print:hidden">
-              <span className="text-xs font-medium">Show only:</span>
-              {meta.units.map((u) => (
-                <button key={u} type="button" onClick={() => setFilters({ unit: u })}
-                  className="h-8 rounded-full border border-amber-300 bg-white px-3 text-sm font-medium text-amber-900 hover:bg-amber-100">{u}</button>
-              ))}
-            </div>
-          </div>
-        )}
 
         {data.cards.length > 0 && (
           <section aria-label="Key figures" className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-[repeat(var(--n),minmax(0,1fr))]" style={{ '--n': Math.min(6, data.cards.length) } as React.CSSProperties}>
