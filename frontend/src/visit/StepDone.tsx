@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { CalendarClock, CheckCircle2, ClipboardPlus, Eye, History, MapPin, Phone } from 'lucide-react'
+import { CalendarClock, CheckCircle2, ClipboardPlus, Eye, History, Phone } from 'lucide-react'
 import { Badge, Button, buttonClass, Card, ErrorState, fmtDate, fmtTime, Skeleton, useApi } from '../components/ui'
 import { fmtDue, visitStatus } from './format.ts'
 import { fmtInr } from './orderMath.ts'
@@ -14,7 +14,7 @@ interface Detail {
   location: { lat: number | null; lng: number | null }
   order_items: { name: string; quantity: number; unit: string; unit_price: number; line_total: number }[]
   order_total: number
-  followups: { id: number; due_date: string; due_time: string | null; priority: string; state: string }[]
+  followups: { id: number; due_date: string; due_time: string | null; priority: string; task: string; state: string }[]
 }
 
 /**
@@ -56,34 +56,30 @@ export default function StepDone({ saved, newDealer, onAnother }: { saved: Saved
 
           <dl className="grid gap-4 p-5 text-sm sm:grid-cols-2">
             <div><dt className="text-xs font-medium text-slate-500">Visited</dt><dd className="mt-0.5 text-slate-900">{fmtDate(v.visited_at)}, {fmtTime(v.visited_at)}</dd></div>
-            <div>
-              <dt className="text-xs font-medium text-slate-500">Location</dt>
-              <dd className="mt-0.5 text-slate-900">
-                {v.location.lat != null ? <span className="inline-flex items-center gap-1"><MapPin size={14} aria-hidden />Captured ({v.location.lat.toFixed(4)}, {v.location.lng?.toFixed(4)})</span> : 'Not captured'}
-              </dd>
-            </div>
             {v.notes && <div className="sm:col-span-2"><dt className="text-xs font-medium text-slate-500">Notes</dt><dd className="mt-0.5 whitespace-pre-wrap text-slate-900">{v.notes}</dd></div>}
           </dl>
 
           <div className="p-5">
             <h3 className="text-sm font-semibold text-slate-900">Order</h3>
             {v.order_items.length === 0 ? <p className="mt-1 text-sm text-slate-500">No order on this visit.</p> : (
-              <div className="mt-2 overflow-x-auto">
-                <table className="w-full min-w-[420px] text-left text-sm">
-                  <thead className="text-xs text-slate-500"><tr><th className="py-1 pr-3 font-medium">Item</th><th className="px-3 py-1 text-right font-medium">Qty</th><th className="px-3 py-1 text-right font-medium">Price</th><th className="py-1 pl-3 text-right font-medium">Total</th></tr></thead>
-                  <tbody className="divide-y">
-                    {v.order_items.map((i, n) => (
-                      <tr key={n}>
-                        <td className="py-2 pr-3 text-slate-900">{i.name}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{i.quantity} {i.unit}</td>
-                        <td className="px-3 py-2 text-right tabular-nums">{i.unit_price ? fmtInr(i.unit_price) : '—'}</td>
-                        <td className="py-2 pl-3 text-right tabular-nums">{i.unit_price ? fmtInr(i.line_total) : '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  {v.order_total > 0 && <tfoot><tr className="border-t"><th colSpan={3} className="py-2 pr-3 text-right font-medium text-slate-700">Order total</th><td className="py-2 pl-3 text-right font-semibold tabular-nums text-slate-900" data-testid="saved-total">{fmtInr(v.order_total)}</td></tr></tfoot>}
-                </table>
-              </div>
+              // A list, not a table: four columns do not fit a phone. Each line is the item and what was ordered; a price line appears only when one was entered.
+              <ul className="mt-2 divide-y text-sm">
+                {v.order_items.map((i, n) => (
+                  <li key={n} className="flex items-start justify-between gap-3 py-2">
+                    <span className="min-w-0 break-words text-slate-900">{i.name}</span>
+                    <span className="shrink-0 text-right tabular-nums text-slate-700">
+                      {i.quantity} {i.unit}
+                      {i.unit_price > 0 && <span className="block text-xs text-slate-500">{fmtInr(i.unit_price)} each · <span className="font-medium text-slate-900">{fmtInr(i.line_total)}</span></span>}
+                    </span>
+                  </li>
+                ))}
+                {v.order_total > 0 && (
+                  <li className="flex items-center justify-between gap-3 py-2 font-medium">
+                    <span className="text-slate-700">Order total</span>
+                    <strong className="tabular-nums text-slate-900" data-testid="saved-total">{fmtInr(v.order_total)}</strong>
+                  </li>
+                )}
+              </ul>
             )}
           </div>
 
@@ -93,7 +89,7 @@ export default function StepDone({ saved, newDealer, onAnother }: { saved: Saved
               <ul className="mt-2 space-y-1">
                 {v.followups.map((f) => (
                   <li key={f.id} className="flex items-center gap-2 text-sm text-slate-900">
-                    <CalendarClock size={15} className="text-primary" aria-hidden />{fmtDue(f.due_date, f.due_time)}<span className="text-xs capitalize text-slate-500">· {f.priority} priority</span>
+                    <CalendarClock size={15} className="text-primary" aria-hidden />{f.task && <strong className="font-medium">{f.task} ·</strong>}{fmtDue(f.due_date, f.due_time)}<span className="text-xs capitalize text-slate-500">· {f.priority} priority</span>
                   </li>
                 ))}
               </ul>
@@ -102,10 +98,11 @@ export default function StepDone({ saved, newDealer, onAnother }: { saved: Saved
         </Card>
       )}
 
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <Link to="/visit-history" className={buttonClass('secondary')}><History size={16} aria-hidden />Visit history</Link>
-        <Link to={`/visit-history/${saved.visit_id}`} className={buttonClass('secondary')}><Eye size={16} aria-hidden />View visit</Link>
-        <Button onClick={onAnother}><ClipboardPlus size={16} aria-hidden />Record another visit</Button>
+      {/* Phone: "Record another visit" full width on top, the two links side by side under it. From 640px: one row, primary on the right. */}
+      <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
+        <Link to="/visit-history" className={buttonClass('secondary', 'md', 'w-full sm:w-auto')}><History size={16} aria-hidden />Visit history</Link>
+        <Link to={`/visit-history/${saved.visit_id}`} className={buttonClass('secondary', 'md', 'w-full sm:w-auto')}><Eye size={16} aria-hidden />View visit</Link>
+        <Button className="col-span-2 max-sm:order-first sm:col-auto" onClick={onAnother}><ClipboardPlus size={16} aria-hidden />Record another visit</Button>
       </div>
     </div>
   )

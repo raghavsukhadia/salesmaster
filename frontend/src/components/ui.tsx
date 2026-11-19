@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { Children, cloneElement, createContext, isValidElement, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, CircleAlert, CircleCheck, Inbox, Info, LoaderCircle, Search, X } from 'lucide-react'
 import { api } from '../auth'
 import { INDIAN_STATES } from '../states'
@@ -91,7 +91,19 @@ export function ErrorState({ message = 'Could not load data.', onRetry }: { mess
   )
 }
 
-export function PageHeader({ title, subtitle, action }: { title: string; subtitle?: string; action?: React.ReactNode }) {
+export function PageHeader({ title, subtitle, action, inlineAction }: { title: string; subtitle?: string; action?: React.ReactNode; inlineAction?: boolean }) {
+  // inlineAction keeps the action on the title's row (even on narrow screens) with the subtitle underneath.
+  if (inlineAction) {
+    return (
+      <div className="mb-6">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="min-w-0 text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
+          {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
+        </div>
+        {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+      </div>
+    )
+  }
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
@@ -132,7 +144,7 @@ export function SearchBox({ value, onChange, placeholder }: { value: string; onC
     <div className="mb-4 flex h-10 items-center gap-2 rounded-lg border bg-white px-3 focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/15">
       <Search size={16} className="shrink-0 text-slate-400" aria-hidden />
       <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={placeholder}
-        className="h-full w-full bg-transparent text-sm outline-none focus-visible:border-transparent focus-visible:shadow-none" />
+        className="h-full min-w-0 flex-1 text-ellipsis bg-transparent text-sm outline-none focus-visible:border-transparent focus-visible:shadow-none" />
       {value && <button type="button" aria-label="Clear search" onClick={() => onChange('')} className="rounded p-1 text-slate-400 hover:text-slate-700"><X size={14} aria-hidden /></button>}
     </div>
   )
@@ -260,14 +272,84 @@ export function Field({ label, error, hint, children }: { label: string; error?:
 
 // Dropdown of Indian states / UTs. A saved value that isn't on the list (older free-text data) stays
 // selectable, so editing an existing dealer never silently blanks or rewrites its state.
-export function StateSelect({ value, onChange, className, placeholder = 'Select state', id }: { value: string; onChange: (v: string) => void; className?: string; placeholder?: string; /** Pass Field's id so its label is linked to the control. */ id?: string }) {
+// A searchable picker, not a native <select>: the browser's list of 36 names overflowed small screens.
+// On phones it opens as a bottom sheet above the nav; from the sm breakpoint up, as a dropdown under the field.
+export function StateSelect({ value, onChange, className = '', placeholder = 'Select state', id }: { value: string; onChange: (v: string) => void; className?: string; placeholder?: string; /** Pass Field's id so its label is linked to the control. */ id?: string }) {
+  const uid = useId()
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const [active, setActive] = useState(0)
+  const root = useRef<HTMLDivElement>(null)
+  const button = useRef<HTMLButtonElement>(null)
+  const list = useRef<HTMLUListElement>(null)
   const legacy = value && !INDIAN_STATES.includes(value) ? value : null
+  const all = useMemo(() => (legacy ? [legacy, ...INDIAN_STATES] : INDIAN_STATES), [legacy])
+  const shown = useMemo(() => { const t = q.trim().toLowerCase(); return t ? all.filter((s) => s.toLowerCase().includes(t)) : all }, [all, q])
+
+  const show = () => { setQ(''); setActive(Math.max(0, all.indexOf(value))); setOpen(true) }
+  const close = () => { setOpen(false); button.current?.focus() }
+  const pick = (s: string) => { onChange(s); close() }
+
+  useEffect(() => {
+    if (!open) return
+    const away = (e: PointerEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('pointerdown', away)
+    return () => document.removeEventListener('pointerdown', away)
+  }, [open])
+
+  useEffect(() => {
+    const el = open ? (list.current?.children[active] as HTMLElement | undefined) : undefined
+    el?.scrollIntoView({ block: 'nearest' })
+  }, [open, active])
+
+  function onKeyDown(e: React.KeyboardEvent) {
+    switch (e.key) {
+      case 'ArrowDown': e.preventDefault(); setActive((a) => Math.min(shown.length - 1, a + 1)); break
+      case 'ArrowUp': e.preventDefault(); setActive((a) => Math.max(0, a - 1)); break
+      case 'Enter': e.preventDefault(); if (shown[active]) pick(shown[active]); break
+      case 'Escape': e.preventDefault(); close(); break
+      case 'Tab': setOpen(false); break
+    }
+  }
+
   return (
-    <select id={id} value={value} onChange={(e) => onChange(e.target.value)} className={className}>
-      <option value="">{placeholder}</option>
-      {legacy && <option value={legacy}>{legacy}</option>}
-      {INDIAN_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
-    </select>
+    <div ref={root} className="relative">
+      <button ref={button} id={id} type="button" aria-haspopup="listbox" aria-expanded={open} onClick={() => (open ? setOpen(false) : show())}
+        onKeyDown={(e) => { if (!open && ['ArrowDown', 'ArrowUp'].includes(e.key)) { e.preventDefault(); show() } }}
+        className={`${className} flex w-full items-center justify-between gap-2 text-left`}>
+        <span className={`truncate ${value ? '' : 'text-slate-400'}`}>{value || placeholder}</span>
+        <ChevronDown aria-hidden className={`size-4 shrink-0 text-slate-500 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <>
+          <div aria-hidden className="fixed inset-0 z-40 bg-primary/40 sm:hidden" onClick={() => setOpen(false)} />
+          <div role="dialog" aria-label="Choose a state"
+            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[75vh] flex-col rounded-t-2xl border bg-white pb-[env(safe-area-inset-bottom)] shadow-pop sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:max-h-80 sm:w-full sm:min-w-64 sm:rounded-lg sm:pb-0">
+            <div className="flex items-center justify-between px-4 pt-3 sm:hidden">
+              <p className="font-semibold text-slate-900">Select state</p>
+              <button type="button" aria-label="Close" onClick={close} className="grid size-9 place-items-center rounded-lg text-slate-500 hover:bg-slate-100"><X size={18} aria-hidden /></button>
+            </div>
+            <div className="relative p-3 pb-2">
+              <Search size={16} aria-hidden className="pointer-events-none absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input autoFocus value={q} onChange={(e) => { setQ(e.target.value); setActive(0) }} onKeyDown={onKeyDown} placeholder="Search state" aria-label="Search state"
+                role="combobox" aria-expanded aria-controls={`${uid}-list`} aria-activedescendant={shown[active] ? `${uid}-o${active}` : undefined}
+                className="h-10 w-full rounded-lg border bg-white pl-9 pr-3 text-base sm:text-sm" />
+            </div>
+            <ul ref={list} id={`${uid}-list`} role="listbox" className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-2">
+              {shown.length === 0 && <li className="px-4 py-3 text-sm text-slate-500">No state matches “{q}”.</li>}
+              {shown.map((s, i) => (
+                <li key={s} id={`${uid}-o${i}`} role="option" aria-selected={s === value}
+                  onMouseDown={(e) => e.preventDefault()} onMouseMove={() => setActive(i)} onClick={() => pick(s)}
+                  className={`flex cursor-pointer items-center justify-between gap-3 px-4 py-3 text-sm text-slate-900 sm:py-2 ${i === active ? 'bg-primary-soft' : ''} ${s === value ? 'font-semibold text-primary' : ''}`}>
+                  {s}
+                  {s === value && <Check aria-hidden className="size-4 shrink-0" />}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -288,12 +370,25 @@ export function Badge({ children, tone = 'blue' }: { children: React.ReactNode; 
 
 export interface Column { label: string; right?: boolean; onSort?: () => void; sorted?: 'asc' | 'desc' | null }
 
-export function Table({ head, children, empty, loading, error, emptyTitle = 'Nothing to show', emptyHint, onRetry }:
-  { head: Column[]; children: React.ReactNode; empty?: boolean; loading?: boolean; error?: boolean; emptyTitle?: string; emptyHint?: string; onRetry?: () => void }) {
+/** Gives each cell its column name (data-label) so a stacked row can name every value. A cell that sets its own data-label keeps it; "" means no name. */
+function labelCells(rows: React.ReactNode, head: Column[]) {
+  return Children.map(rows, (tr) => {
+    if (!isValidElement<{ children?: React.ReactNode }>(tr)) return tr
+    return cloneElement(tr, undefined, Children.map(tr.props.children, (td, i) =>
+      isValidElement<{ 'data-label'?: string }>(td) && td.props['data-label'] === undefined && head[i] ? cloneElement(td, { 'data-label': head[i].label }) : td))
+  })
+}
+
+/**
+ * `stack`: below 640px each row is shown as a card instead of a row of columns, so nothing needs sideways scrolling on a phone
+ * (see .stack-table in index.css). Rows must be <tr> with <td> cells directly inside. The first cell becomes the card's title.
+ */
+export function Table({ head, children, empty, loading, error, emptyTitle = 'Nothing to show', emptyHint, onRetry, stack = false }:
+  { head: Column[]; children: React.ReactNode; empty?: boolean; loading?: boolean; error?: boolean; emptyTitle?: string; emptyHint?: string; onRetry?: () => void; stack?: boolean }) {
   return (
     <div className="overflow-hidden rounded-xl border bg-white shadow-card">
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-sm">
+        <table className={`w-full text-left text-sm ${stack ? 'stack-table sm:min-w-[640px]' : 'min-w-[640px]'}`}>
           <thead className="border-b bg-slate-50 text-xs font-medium uppercase tracking-wide text-slate-500">
             <tr>
               {head.map((h) => (
@@ -311,9 +406,9 @@ export function Table({ head, children, empty, loading, error, emptyTitle = 'Not
           </thead>
           <tbody className="divide-y [&>tr:hover]:bg-slate-50/70 [&_td]:px-3 [&_td]:py-3 [&_td:first-child]:pl-4 [&_td:last-child]:pr-4">
             {loading && Array.from({ length: 5 }, (_, r) => (
-              <tr key={r} aria-hidden>{head.map((h, c) => <td key={h.label}><Skeleton className={`h-4 ${c === 0 ? 'w-32' : 'w-20'}`} /></td>)}</tr>
+              <tr key={r} aria-hidden>{head.map((h, c) => <td key={h.label} data-label={stack ? '' : undefined}><Skeleton className={`h-4 ${c === 0 ? 'w-32' : 'w-20'}`} /></td>)}</tr>
             ))}
-            {!loading && !error && children}
+            {!loading && !error && (stack ? labelCells(children, head) : children)}
           </tbody>
         </table>
       </div>
@@ -406,7 +501,7 @@ export function UiProvider({ children }: { children: React.ReactNode }) {
   return (
     <UiContext.Provider value={value}>
       {children}
-      <div aria-live="polite" className="pointer-events-none fixed inset-x-4 bottom-4 z-[60] flex flex-col items-end gap-2 sm:left-auto sm:right-6 sm:bottom-6">
+      <div aria-live="polite" className="pointer-events-none fixed inset-x-4 bottom-20 z-[60] flex flex-col items-end gap-2 sm:left-auto sm:right-6 lg:bottom-6">
         {toasts.map((t) => (
           <div key={t.id} role={t.tone === 'error' ? 'alert' : 'status'}
             className={`pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-xl border bg-white p-4 text-sm shadow-pop ${t.tone === 'error' ? 'border-red-200' : t.tone === 'info' ? 'border-primary-line' : 'border-green-200'}`}>

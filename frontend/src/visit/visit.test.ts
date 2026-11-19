@@ -2,7 +2,7 @@
 // Run with: npm test   (node --test, native TypeScript type stripping)
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { draftPayload, EMPTY_DRAFT, hasLocation, isTenDigitNumber, normalizePhone, validateDraft, type DealerDraft } from './dealerDraft.ts'
+import { CARD_DRAFT_KEYS, draftPayload, EMPTY_DRAFT, hasLocation, isTenDigitNumber, normalizePhone, validateDraft, type DealerDraft } from './dealerDraft.ts'
 import { fmtInr, fmtPaise, lineTotalPaise, orderTotalPaise, parsePaise, parsePrice, priceError, toOrderItems, type OrderLine } from './orderMath.ts'
 
 const draft = (over: Partial<DealerDraft> = {}): DealerDraft => ({ ...EMPTY_DRAFT, name: 'Sharma Auto', phone: '98765 43210', ...over })
@@ -65,31 +65,47 @@ test('phone numbers normalise the way the server does', () => {
   for (const s of ['98765', '98765 4321', '98765 432101', '+91 98765 4321', 'abcdefghij']) assert.ok(!isTenDigitNumber(s), s)
 })
 
+/** A draft with every required (starred) field filled: business name, phone, address, city, state, pincode. */
+const complete = (over: Partial<DealerDraft> = {}): DealerDraft =>
+  draft({ city: 'Pune', address: 'Shop 4, MG Road', state: 'Maharashtra', pincode: '411001', latitude: '18.520400', longitude: '73.856700', location_accuracy_m: '15', ...over })
+
 test('a good draft passes', () => {
-  assert.deepEqual(validateDraft(draft()), {})
-  assert.deepEqual(validateDraft(draft({ phone: '', city: 'Pune' })), {}) // city alone identifies the dealer
-  assert.deepEqual(validateDraft(draft({ phone: '', gst_number: '27abcde1234f1z5' })), {}) // lower case is accepted, upper-cased on send
+  assert.deepEqual(validateDraft(complete()), {})
+  assert.deepEqual(validateDraft(complete({ phone: '+91 98765-43210' })), {}) // any common way of writing the number
 })
 
-test('each field is checked on its own', () => {
-  assert.equal(validateDraft(draft({ name: '  ' })).name, 'Enter the dealer or shop name')
-  assert.ok(validateDraft(draft({ phone: '98765' })).phone)
-  assert.ok(validateDraft(draft({ whatsapp: '12' })).whatsapp)
-  assert.ok(validateDraft(draft({ pincode: '4110' })).pincode)
-  assert.ok(validateDraft(draft({ gst_number: '27ABCDE1234F1X5' })).gst_number)
-  assert.deepEqual(validateDraft(draft({ pincode: '411001' })), {})
+test('every field on the form is required: business name, phone, address, city, state, pincode and the shop location', () => {
+  assert.deepEqual(Object.keys(validateDraft(EMPTY_DRAFT)).sort(), ['address', 'city', 'location', 'name', 'phone', 'pincode', 'state'])
+  assert.deepEqual(Object.keys(validateDraft(complete({ latitude: '', longitude: '', location_accuracy_m: '' }))), ['location'], 'no Continue without the shop location')
+  assert.equal(validateDraft(complete({ name: '  ' })).name, 'Enter the business name')
+  for (const k of ['name', 'phone', 'address', 'city', 'state', 'pincode'] as const) {
+    assert.deepEqual(Object.keys(validateDraft(complete({ [k]: '   ' }))), [k], `${k} is required, and only ${k} is reported`)
+  }
 })
 
-test('a dealer with nothing to identify them is refused with a form-level message', () => {
-  const e = validateDraft({ ...EMPTY_DRAFT, name: 'Raj Traders' })
-  assert.ok(e._)
-  assert.equal(e.name, undefined)
+test('a filled field is still checked on its own', () => {
+  assert.ok(validateDraft(complete({ phone: '98765' })).phone)
+  assert.ok(validateDraft(complete({ pincode: '4110' })).pincode)
+})
+
+test('contact person, WhatsApp and GST are not part of the Record Visit form: not in a draft, not validated, not sent', () => {
+  for (const k of ['contact_name', 'whatsapp', 'gst_number']) assert.ok(!(k in EMPTY_DRAFT), `${k} must not be a draft field`)
+  // Even if one sneaks in (an old saved draft, a scan), it can neither block Continue nor reach the server.
+  const sneaky = { ...complete(), whatsapp: '12', gst_number: 'not-a-gstin', contact_name: 'Raj' } as DealerDraft
+  assert.deepEqual(validateDraft(sneaky), {})
+  const sent = draftPayload(sneaky)
+  for (const k of ['contact_name', 'whatsapp', 'gst_number']) assert.ok(!(k in sent), `${k} must not be sent`)
+})
+
+test('a scanned card fills only the fields that are on the form', () => {
+  assert.deepEqual([...CARD_DRAFT_KEYS].sort(), ['address', 'city', 'name', 'phone', 'pincode', 'state'])
+  for (const k of CARD_DRAFT_KEYS) assert.ok(k in EMPTY_DRAFT, `${k} must be a draft field`)
 })
 
 test('the payload is trimmed, normalised and leaves out empty fields', () => {
   assert.deepEqual(
-    draftPayload(draft({ name: '  Sharma Auto ', phone: '+91 98765 43210', whatsapp: '', contact_name: ' Raj ', gst_number: '27abcde1234f1z5', city: 'Pune', address: '' })),
-    { name: 'Sharma Auto', contact_name: 'Raj', phone: '9876543210', gst_number: '27ABCDE1234F1Z5', city: 'Pune' },
+    draftPayload(draft({ name: '  Sharma Auto ', phone: '+91 98765 43210', city: 'Pune', address: '' })),
+    { name: 'Sharma Auto', phone: '9876543210', city: 'Pune' },
   )
 })
 

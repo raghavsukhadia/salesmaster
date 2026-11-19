@@ -13,7 +13,7 @@ export const REPORT_NAV: ReportLink[] = [
   { slug: 'visit-performance', label: 'Visit Performance', title: 'Visit Performance', hint: 'How many visits turned into orders.' },
   { slug: 'followup-reports', label: 'Follow-up Reports', title: 'Follow-up Reports', hint: 'Pending, completed and overdue follow-ups, and which led to orders.' },
   { slug: 'sales-targets', label: 'Sales Targets', title: 'Sales Targets', hint: 'Monthly order and visit targets against what was achieved.' },
-  { slug: 'compare', label: 'Compare', title: 'Advanced Comparison', hint: 'Two salesmen, products, dealers, months or date ranges side by side.' },
+  { slug: 'compare', label: 'Compare', title: 'Advanced Comparison', hint: 'Two salesman, products, dealers, months or date ranges side by side.' },
 ]
 
 /**

@@ -15,9 +15,10 @@ from apps.visits.services import normalize_gst, normalize_phone
 from .access import accessible_dealers, effective_grants
 from .models import Dealer, DealerAccessGrant, DealerOwnershipHistory, DealerStatus
 from .serializers import DealerUpdateSerializer, GrantSerializer, TransferSerializer
-from .services import add_grant, current_owner, revoke_grant, transfer_ownership
+from .services import add_grant, current_owner, is_current_owner, revoke_grant, transfer_ownership
 
 EDITABLE = ("name", "shop_name", "phone", "whatsapp", "address", "city", "state", "pincode", "gst_number")
+SALESMAN_EDITABLE = ("name", "address", "city", "state", "pincode")
 TABS = ("visits", "orders", "followups", "activity")
 
 
@@ -92,9 +93,15 @@ class DealerDetailView(APIView):
         return Response(data)
 
     def patch(self, request, pk):
-        if not request.user.is_management:
+        user = request.user
+        if not user.is_management:
+            # Salesmen may fix the name and address of a dealer they own, nothing else (phone, GST, status, archive
+            # stay with management). Forbidden fields are refused outright rather than silently ignored.
+            if set(request.data) - set(SALESMAN_EDITABLE):
+                raise PermissionDenied()
+        dealer = load_dealer(user, pk)
+        if not user.is_management and not is_current_owner(user, dealer):
             raise PermissionDenied()
-        dealer = load_dealer(request.user, pk)
         s = DealerUpdateSerializer(data=request.data, partial=True)
         s.is_valid(raise_exception=True)
         v = s.validated_data

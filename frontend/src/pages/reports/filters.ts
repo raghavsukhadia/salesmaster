@@ -71,7 +71,7 @@ export function filterSearch(f: Filters): string {
 }
 
 export const COMPARE_KINDS = [
-  ['salesman', 'Two salesmen'], ['product', 'Two products'], ['dealer', 'Two dealers'], ['month', 'Two months'], ['range', 'Two date ranges'],
+  ['salesman', 'Two salesman'], ['product', 'Two products'], ['dealer', 'Two dealers'], ['month', 'Two months'], ['range', 'Two date ranges'],
 ] as const
 export type CompareKind = (typeof COMPARE_KINDS)[number][0]
 

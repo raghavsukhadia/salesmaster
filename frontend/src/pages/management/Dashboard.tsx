@@ -97,7 +97,7 @@ export default function Dashboard() {
         {d && <>
           <Kpi icon={Store} chip="bg-primary-soft text-primary" label="Total dealers" value={d.kpis.total_dealers} sub={`${d.unassigned_dealers} unassigned`} to="/dealers" />
           <Kpi icon={ClipboardCheck} chip="bg-primary-soft text-primary" label="Visits today" value={d.kpis.visits_today} sub={`Yesterday: ${d.trends.visits_yesterday}`} to="/visits?range=today" />
-          <Kpi icon={Users} chip="bg-green-50 text-green-700" label="Active salesmen" value={d.kpis.active_salesmen} sub={`${activeToday} visited today`} to="/salesmen" />
+          <Kpi icon={Users} chip="bg-green-50 text-green-700" label="Active salesman" value={d.kpis.active_salesmen} sub={`${activeToday} visited today`} to="/salesmen" />
           <Kpi icon={UserPlus} chip="bg-accent-soft text-accent-ink" label="New dealers today" value={d.kpis.new_dealers_today} sub={`Yesterday: ${d.trends.new_dealers_yesterday}`} to="/dealers?sort=newest" />
           <Kpi icon={CalendarClock} chip="bg-amber-50 text-amber-700" label="Pending follow-ups" value={d.kpis.pending_followups} sub={`${d.kpis.overdue_followups} overdue`} to="/followups-management" />
           <Kpi icon={CalendarX} chip="bg-red-50 text-red-600" label="Overdue follow-ups" value={d.kpis.overdue_followups} sub={d.kpis.overdue_followups ? 'Needs attention' : 'All on track'} to="/followups-management?tab=overdue" />
@@ -124,10 +124,12 @@ export default function Dashboard() {
         <SalesmanActivity rows={d?.salesman_activity ?? []} loading={dash.loading && !d} error={dash.error && !d} onRetry={dash.reload} canAdd={me.role === 'admin'} />
       </div>
 
-      <section aria-labelledby="recent-h">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <div>
+      <section aria-labelledby="recent-h" className="-mx-4 rounded-none bg-primary-soft/60 px-4 py-5 sm:mx-0 sm:rounded-2xl sm:p-5">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="grid size-9 place-items-center rounded-xl bg-primary text-white"><ClipboardCheck size={18} aria-hidden /></span>
             <h2 id="recent-h" className="text-lg font-semibold text-slate-900">Recent visits</h2>
+            {!visits.loading && rows.length > 0 && <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-white">{rows.length}</span>}
           </div>
           <ViewAll to={allVisits}>View all visits</ViewAll>
         </div>

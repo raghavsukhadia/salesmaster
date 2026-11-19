@@ -76,7 +76,7 @@ export default function FilterBar({ filters, options, setFilters }: Props) {
       <div id="more-filters" className={`${more ? 'grid' : 'hidden'} mt-3 gap-3 sm:grid-cols-2 lg:grid lg:grid-cols-6`}>
         {management && (
           <DropdownSelect label="Salesman" value={filters.salesman} onChange={(v) => setFilters({ salesman: v })}
-            options={[{ value: '', label: 'All salesmen' }, ...(options?.salesmen ?? []).map((s) => ({ value: String(s.id), label: s.active ? s.name : `${s.name} (inactive)` }))]} />
+            options={[{ value: '', label: 'All salesman' }, ...(options?.salesmen ?? []).map((s) => ({ value: String(s.id), label: s.active ? s.name : `${s.name} (inactive)` }))]} />
         )}
         <DealerPicker label="Dealer" value={filters.dealer} onChange={(v) => setFilters({ dealer: v })} />
         <SearchSelect label="Product name" value={filters.product} allLabel="All products" placeholder="Search products"

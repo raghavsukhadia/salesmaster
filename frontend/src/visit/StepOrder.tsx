@@ -2,33 +2,31 @@ import { useState } from 'react'
 import { ArrowLeft, CalendarClock, CircleAlert, MapPin, Minus, PackagePlus, Plus, Search, Trash2 } from 'lucide-react'
 import { api, ApiError } from '../auth'
 import { Badge, Button, Card, flatten, qs, useApi, useDebounced } from '../components/ui'
-import { draftPayload } from './dealerDraft.ts'
-import { localDate } from './format.ts'
-import { fmtPaise, lineTotalPaise, orderTotalPaise, parsePaise, toOrderItems, UNITS, type OrderLine, type Unit } from './orderMath.ts'
-import PhotosPanel from './PhotosPanel'
-import { usePhotoState } from './photoState.ts'
+import { gpsMessage, quickReading } from '../field/gps.ts'
+import { tracker } from '../field/useTracker'
+import { draftPayload, hasLocation } from './dealerDraft.ts'
+import { fmtDue, localDate } from './format.ts'
+import { toOrderItems, UNITS, type OrderLine, type Unit } from './orderMath.ts'
+import { dueDateFor, EMPTY_NEXT_STEP, NEXT_ACTIONS, nextStepFollowup, nextStepProblems, NOTE_MAX, TEXT_MAX, WHEN_OPTIONS, type NextStep } from './nextStep.ts'
 import type { Chosen, DealerLite } from './types.ts'
-
-export type Priority = 'low' | 'medium' | 'high'
 
 export interface OrderState {
   hasOrder: boolean
   lines: OrderLine[]
   notes: string
-  geo: { lat: number; lng: number } | null
-  followup: { on: boolean; date: string; time: string; priority: Priority; notes: string }
+  /** Where the salesman was when they tapped "Capture location". Saved as the visit's location. */
+  geo: { lat: number; lng: number; accuracy_m: number } | null
+  next: NextStep
 }
 
 export const EMPTY_ORDER: OrderState = {
   hasOrder: false, lines: [], notes: '', geo: null,
-  followup: { on: false, date: '', time: '', priority: 'medium', notes: '' },
+  next: EMPTY_NEXT_STEP,
 }
 
 export interface Saved { visit_id: number; dealer_id: number; created: boolean }
 
 interface ProductLite { id: number; name: string; category: string }
-
-const localTime = (d = new Date()) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 
 const input = 'h-10 w-full rounded-lg border bg-white px-3 text-sm'
 const lbl = 'mb-1 block text-xs font-medium text-slate-700'
@@ -64,16 +62,15 @@ export default function StepOrder({ chosen, order, setOrder, requestId, onBack, 
   const [pq, setPq] = useState('')
   const dpq = useDebounced(pq)
   const [custom, setCustom] = useState('')
-  const [geoMsg, setGeoMsg] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [errors, setErrors] = useState<string[]>([])
   const [duplicate, setDuplicate] = useState<DealerLite | null>(null)
-  const photos = usePhotoState(requestId) // car photos: uploaded as they are chosen; the server enforces the minimum
+  const [locBusy, setLocBusy] = useState(false)
+  const [geoMsg, setGeoMsg] = useState('')
 
-  const { hasOrder, lines, notes, geo, followup: fu } = order
-  const today = localDate()
+  const { hasOrder, lines, notes, geo, next } = order
   const set = (patch: Partial<OrderState>) => setOrder((o) => ({ ...o, ...patch }))
-  const setFu = (patch: Partial<OrderState['followup']>) => setOrder((o) => ({ ...o, followup: { ...o.followup, ...patch } }))
+  const setNext = (patch: Partial<NextStep>) => setOrder((o) => ({ ...o, next: { ...o.next, ...patch } }))
   const setLine = (key: string, patch: Partial<OrderLine>) => setOrder((o) => ({ ...o, lines: o.lines.map((l) => (l.key === key ? { ...l, ...patch } : l)) }))
 
   function addLine(it: { product_id?: number; product_name: string }) {
@@ -84,28 +81,28 @@ export default function StepOrder({ chosen, order, setOrder, requestId, onBack, 
     })
   }
 
-  function captureLocation() {
-    if (!navigator.geolocation) return setGeoMsg('Location is not supported on this device.')
-    setGeoMsg('Getting location…')
-    navigator.geolocation.getCurrentPosition(
-      (p) => { set({ geo: { lat: p.coords.latitude, lng: p.coords.longitude } }); setGeoMsg('') },
-      () => setGeoMsg('Could not get your location. You can still save without it.'),
-      { enableHighAccuracy: true, timeout: 10000 },
-    )
+  async function captureLocation() {
+    setLocBusy(true); setGeoMsg('')
+    try {
+      const r = await quickReading({ latest: tracker.getState().position })
+      set({ geo: { lat: r.latitude, lng: r.longitude, accuracy_m: r.accuracy_m } })
+    } catch (e) {
+      setGeoMsg(`${gpsMessage(e)} You can still save the visit without it.`)
+    } finally {
+      setLocBusy(false)
+    }
   }
 
   function problems(): string[] {
     const out: string[] = []
     if (hasOrder && lines.length === 0) out.push('Add at least one product to the order, or choose “No order”.')
-    for (const l of lines) if (parsePaise(l.unit_price) === null) out.push(`Fix the price for ${l.product_name}.`)
-    if (fu.on) {
-      if (!fu.date) out.push('Choose a follow-up date.')
-      else if (fu.date < today) out.push('The follow-up date cannot be in the past.')
-      else if (fu.date === today && fu.time && fu.time < localTime(new Date(Date.now() - 5 * 60_000))) out.push('That follow-up time has already passed today.')
-    }
-    if (photos.problem) out.push(photos.problem)
+    out.push(...nextStepProblems(next))
     return out
   }
+
+  // The visit's location is the one tapped here; failing that, the position detected on the new-dealer form (the salesman was at the shop).
+  const place = geo ? { latitude: geo.lat.toFixed(6), longitude: geo.lng.toFixed(6) }
+    : chosen.kind === 'new' && hasLocation(chosen.draft) ? { latitude: chosen.draft.latitude, longitude: chosen.draft.longitude } : null
 
   async function save(e: React.FormEvent) {
     e.preventDefault()
@@ -113,15 +110,15 @@ export default function StepOrder({ chosen, order, setOrder, requestId, onBack, 
     const local = problems()
     if (local.length) return setErrors(local)
 
+    const followup = nextStepFollowup(next)
     const body: Record<string, unknown> = {
       client_request_id: requestId,
       notes: notes.trim(),
       has_order: hasOrder,
       ...(chosen.kind === 'existing' ? { dealer_id: chosen.dealer.id } : { new_dealer: draftPayload(chosen.draft) }),
       ...(hasOrder && { order_items: toOrderItems(lines) }),
-      ...(photos.ids.length > 0 && { photo_ids: photos.ids }),
-      ...(geo && { latitude: geo.lat.toFixed(6), longitude: geo.lng.toFixed(6) }),
-      ...(fu.on && { followup: { due_date: fu.date, ...(fu.time && { due_time: fu.time }), priority: fu.priority, ...(fu.notes.trim() && { notes: fu.notes.trim() }) } }),
+      ...(followup && { followup }),
+      ...place, // latitude + longitude of the visit, when there is one
     }
 
     setSubmitting(true); setErrors([]); setDuplicate(null)
@@ -144,8 +141,7 @@ export default function StepOrder({ chosen, order, setOrder, requestId, onBack, 
 
   const dealerName = chosen.kind === 'existing' ? chosen.dealer.name : chosen.draft.name
   const dealerSub = chosen.kind === 'existing' ? [chosen.dealer.city, chosen.dealer.phone].filter(Boolean).join(' · ') : [chosen.draft.city, chosen.draft.phone].filter(Boolean).join(' · ')
-  const total = orderTotalPaise(lines)
-  const timeNote = fu.on && fu.date === today && !fu.time ? 'No time: it will be due any time today.' : ''
+  const nextOn = next.action !== null && next.action !== 'nothing' // "Nothing" needs no date, text or note
 
   return (
     <form onSubmit={save} noValidate className="space-y-5">
@@ -165,7 +161,7 @@ export default function StepOrder({ chosen, order, setOrder, requestId, onBack, 
           {[true, false].map((v) => (
             <button key={String(v)} type="button" aria-pressed={hasOrder === v} onClick={() => set({ hasOrder: v })}
               className={`h-10 rounded-lg border text-sm font-medium transition-colors ${hasOrder === v ? 'border-primary bg-primary text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>
-              {v ? 'Order placed' : 'No order'}
+              {v ? 'Yes' : 'No order'}
             </button>
           ))}
         </div>
@@ -194,16 +190,14 @@ export default function StepOrder({ chosen, order, setOrder, requestId, onBack, 
               <p className="rounded-lg border border-dashed p-4 text-center text-sm text-slate-500">No items added yet.</p>
             ) : (
               <ul className="space-y-3" aria-label="Order items">
-                {lines.map((l) => {
-                  const bad = parsePaise(l.unit_price) === null
-                  return (
+                {lines.map((l) => (
                     <li key={l.key} className="rounded-xl border bg-white p-3">
                       <div className="flex items-start justify-between gap-2">
                         <p className="min-w-0 font-medium text-slate-900">{l.product_name}{!l.product_id && <span className="ml-1.5 text-xs font-normal text-slate-500">(other item)</span>}</p>
                         <button type="button" aria-label={`Remove ${l.product_name}`} onClick={() => setOrder((o) => ({ ...o, lines: o.lines.filter((x) => x.key !== l.key) }))}
                           className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 size={16} aria-hidden /></button>
                       </div>
-                      <div className="mt-2 grid grid-cols-[auto_1fr_1fr] gap-2 sm:grid-cols-[auto_8rem_1fr_auto] sm:items-end">
+                      <div className="mt-2 grid grid-cols-[auto_1fr] gap-2 sm:grid-cols-[auto_8rem]">
                         <div>
                           <span className={lbl}>Quantity</span>
                           <div className="flex h-10 items-center overflow-hidden rounded-lg border bg-white">
@@ -220,29 +214,14 @@ export default function StepOrder({ chosen, order, setOrder, requestId, onBack, 
                             {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
                           </select>
                         </div>
-                        <div>
-                          <label htmlFor={`p-${l.key}`} className={lbl}>Price per {l.unit} (₹)</label>
-                          <input id={`p-${l.key}`} inputMode="decimal" placeholder="Optional" value={l.unit_price} aria-invalid={bad || undefined} autoComplete="off"
-                            onChange={(e) => setLine(l.key, { unit_price: e.target.value })} className={`${input} ${bad ? 'border-red-400' : ''}`} />
-                        </div>
-                        <p className="col-span-3 text-right text-sm text-slate-600 sm:col-span-1 sm:pb-2">
-                          {bad ? <span className="text-red-600">Invalid price</span> : <>Line total <strong className="tabular-nums text-slate-900">{fmtPaise(lineTotalPaise(l))}</strong></>}
-                        </p>
                       </div>
                     </li>
-                  )
-                })}
-                <li className="flex items-center justify-between rounded-xl bg-primary-soft px-4 py-3 text-sm">
-                  <span className="font-medium text-slate-700">Order total <span className="font-normal text-slate-500">({lines.length} {lines.length === 1 ? 'item' : 'items'})</span></span>
-                  <strong className="text-base tabular-nums text-primary" data-testid="order-total">{fmtPaise(total)}</strong>
-                </li>
+                ))}
               </ul>
             )}
           </div>
         )}
       </Card>
-
-      <PhotosPanel requestId={requestId} />
 
       <Card className="space-y-4 p-4 sm:p-6">
         <div>
@@ -250,46 +229,58 @@ export default function StepOrder({ chosen, order, setOrder, requestId, onBack, 
           <textarea id="visit-notes" rows={3} maxLength={5000} value={notes} onChange={(e) => set({ notes: e.target.value })} placeholder="What was discussed, what the dealer needs, anything to remember"
             className="w-full rounded-lg border bg-white px-3 py-2 text-sm" />
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant="secondary" onClick={captureLocation}><MapPin size={16} aria-hidden />{geo ? 'Update location' : 'Capture location'}</Button>
-          {geo && <span className="text-sm text-green-700">Location captured ({geo.lat.toFixed(4)}, {geo.lng.toFixed(4)})</span>}
-          {geoMsg && <span className="text-sm text-slate-500" role="status">{geoMsg}</span>}
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="secondary" onClick={captureLocation} loading={locBusy}>
+              {!locBusy && <MapPin size={16} aria-hidden />}{locBusy ? 'Capturing…' : geo ? 'Update location' : 'Capture location'}
+            </Button>
+            {geo && !locBusy && <span role="status" className="text-sm text-green-700">Location captured ({geo.lat.toFixed(4)}, {geo.lng.toFixed(4)})</span>}
+          </div>
+          {geoMsg && <p role="status" className="mt-2 text-sm text-red-700">{geoMsg}</p>}
+          {!geo && !geoMsg && place && <p className="mt-2 text-xs text-slate-500">The position you detected for this new dealer is saved as the visit location.</p>}
+          <p className="mt-2 text-xs text-slate-500">The location is saved with this visit and visible to your managers.</p>
         </div>
       </Card>
 
       <Card className="p-4 sm:p-6">
-        <label className="flex cursor-pointer items-center gap-3">
-          <input type="checkbox" checked={fu.on} onChange={(e) => setFu({ on: e.target.checked })} className="size-4" />
-          <span className="flex items-center gap-2 font-semibold text-slate-900"><CalendarClock size={18} className="text-primary" aria-hidden />Schedule a follow-up</span>
-        </label>
-        {fu.on && (
-          <div className="mt-4 space-y-4">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <div>
-                <label htmlFor="fu-date" className={lbl}>Date *</label>
-                <input id="fu-date" type="date" min={today} max={localDate(365)} value={fu.date} onChange={(e) => setFu({ date: e.target.value })} className={input} />
-              </div>
-              <div>
-                <label htmlFor="fu-time" className={lbl}>Time (optional)</label>
-                <input id="fu-time" type="time" value={fu.time} onChange={(e) => setFu({ time: e.target.value })} className={input} />
-              </div>
-              <div>
-                <label htmlFor="fu-priority" className={lbl}>Priority</label>
-                <select id="fu-priority" value={fu.priority} onChange={(e) => setFu({ priority: e.target.value as Priority })} className={input}>
-                  <option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option>
-                </select>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2" aria-label="Quick dates">
-              {([['Tomorrow', 1], ['In 3 days', 3], ['Next week', 7]] as const).map(([label, d]) => (
-                <button key={label} type="button" onClick={() => setFu({ date: localDate(d) })}
-                  className={`rounded-full border px-3 py-1 text-xs font-medium ${fu.date === localDate(d) ? 'border-primary bg-primary-soft text-primary' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>{label}</button>
-              ))}
-            </div>
-            {timeNote && <p className="text-xs text-slate-500">{timeNote}</p>}
+        <h2 id="next-heading" className="flex items-center gap-2 text-lg font-semibold text-slate-900"><CalendarClock size={18} className="text-primary" aria-hidden />What should you do next? <span className="text-red-600" aria-hidden>*</span></h2>
+
+        <div className="mt-4 grid grid-cols-2 gap-2" role="group" aria-labelledby="next-heading" aria-required="true">
+          {NEXT_ACTIONS.map((a) => (
+            <button key={a.value} type="button" aria-pressed={next.action === a.value} onClick={() => setNext({ action: a.value })}
+              className={`h-11 rounded-lg border px-2 text-sm font-medium transition-colors ${a.value === 'nothing' ? 'col-span-2' : ''} ${next.action === a.value ? 'border-primary bg-primary text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>
+              {a.label}
+            </button>
+          ))}
+        </div>
+
+        {nextOn && (
+          <div className="mt-5 space-y-4">
             <div>
-              <label htmlFor="fu-notes" className={lbl}>Follow-up note</label>
-              <input id="fu-notes" value={fu.notes} maxLength={500} onChange={(e) => setFu({ notes: e.target.value })} placeholder="e.g. Send quotation for 20 rolls" className={input} />
+              <p id="when-label" className={lbl}>When? *</p>
+              <div className="flex flex-wrap gap-2" role="group" aria-labelledby="when-label">
+                {WHEN_OPTIONS.map((w) => (
+                  <button key={w.value} type="button" aria-pressed={next.when === w.value} onClick={() => setNext({ when: w.value })}
+                    className={`rounded-full border px-4 py-2 text-sm font-medium ${next.when === w.value ? 'border-primary bg-primary-soft text-primary' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>{w.label}</button>
+                ))}
+              </div>
+              {next.when === 'custom' && (
+                <input aria-label="Follow-up date" type="date" min={localDate()} max={localDate(365)} value={next.customDate} onChange={(e) => setNext({ customDate: e.target.value })} className={`${input} mt-2 sm:max-w-xs`} />
+              )}
+              {dueDateFor(next) && <p className="mt-1.5 text-xs text-slate-500">Due {fmtDue(dueDateFor(next))}</p>}
+            </div>
+
+            {next.action === 'other' && (
+              <div>
+                <label htmlFor="next-text" className={lbl}>What to do *</label>
+                <input id="next-text" value={next.text} maxLength={TEXT_MAX} onChange={(e) => setNext({ text: e.target.value })} placeholder="e.g. Confirm installation date" className={input} />
+              </div>
+            )}
+
+            <div>
+              <label htmlFor="next-note" className={lbl}>Add a note <span className="font-normal text-slate-500">(optional)</span></label>
+              <textarea id="next-note" rows={2} maxLength={NOTE_MAX} value={next.note} onChange={(e) => setNext({ note: e.target.value })} placeholder="e.g. Dealer asked for revised PPF pricing."
+                className="w-full rounded-lg border bg-white px-3 py-2 text-sm" />
             </div>
           </div>
         )}

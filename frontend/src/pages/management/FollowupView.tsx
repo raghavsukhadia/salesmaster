@@ -3,7 +3,7 @@ import { Badge, fmtDate, fmtTime, useApi } from '../../components/ui'
 import { Field, OUTCOME, STATE } from './VisitView'
 
 interface Detail {
-  id: number; due_date: string; created_at: string; status: string; state: string; priority: string; outcome: string; notes: string; days_overdue: number
+  id: number; due_date: string; created_at: string; status: string; state: string; priority: string; outcome: string; task: string; notes: string; days_overdue: number
   dealer: { id: number; name: string; shop_name: string; phone: string; whatsapp: string; city: string; state: string; status: string; owner: string | null }
   salesman: { id: number; name: string; phone: string; email: string; active: boolean }
   visit: { id: number; visited_at: string } | null
@@ -32,6 +32,7 @@ export default function FollowupView() {
       <section className={card}>
         <h2 className="mb-3 font-semibold">Follow-up</h2>
         <dl className="grid gap-3 md:grid-cols-4">
+          <Field label="What to do">{f.task}</Field>
           <Field label="Due date"><span className={f.state === 'overdue' ? 'font-medium text-red-700' : ''}>{fmtDate(f.due_date)}</span>{f.days_overdue > 0 && <span className="ml-2 text-xs text-red-700">{f.days_overdue} day(s) overdue</span>}</Field>
           <Field label="Status"><span className="capitalize">{f.status}</span></Field>
           <Field label="Priority"><span className="capitalize">{f.priority}</span></Field>

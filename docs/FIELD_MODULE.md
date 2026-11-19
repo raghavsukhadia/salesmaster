@@ -6,13 +6,15 @@ reuses the existing users, `Salesman`, `Dealer`, ownership/access rules and role
 
 ## Status
 
+Duty now starts automatically when an authenticated salesman opens or returns to the app. The shared app shell owns the tracker, including My Dealers and dealer details. The manual Field Duty page and nearby-dealer controls on that page have been removed; old `/field` links redirect to Record Visit. Sign-out stops GPS immediately and closes the session before clearing the login, with offline closure retained for retry. The login screens and persistent banner disclose sharing and browser permission remains required. Browser exit stops client recording; the server uses the existing session expiry and stale/lost rules rather than relying on an unload request.
+
 | Slice | State |
 |---|---|
 | 1. Duty sessions, GPS upload, offline queue, live status | **Built and tested** |
-| 2. Admin live map, route history, audit log, retention | **Built and tested** |
+| 2. Admin live map, route history, audit log, retention | **Built and tested** (the API; the app has no Field Settings or audit-log screen) |
 | 3. Nearby dealers (1/3/5/10/20 km), reverse search | **Built and tested** |
 | 4. Dealer location master (verify, territory, contact) | **Built and tested** |
-| 5. Beat planning, geofenced check-in/out, visit outcomes, follow-up tasks | **Backend built and tested** (API below). The salesman check-in screen and the manager beat-planning screen are **not built yet**; "Beat Planning" in the sidebar still says "not available" |
+| 5. Beat planning, geofenced check-in/out, visit outcomes, follow-up tasks | **Backend built and tested** (API below). The salesman check-in screen and the manager beat-planning screen are **not built yet**, and the sidebar has no Beat Planning entry |
 | 6. Car photos on every visit (minimum 2, server-enforced) | **Built and tested**, in Record Visit's Order Details step and on both visit-detail pages |
 | 7. Route optimisation, driving distance | Not built (needs a routing provider; see "Distance") |
 
@@ -165,8 +167,7 @@ Beats and check-in (salesman):
 
 Managers see every salesman, as they already do everywhere else in the app: there is no manager-to-team link in the
 schema. Raw GPS tables are deliberately **not** registered in Django admin, since browsing them there would bypass
-the audit log. Salesmen are told what is recorded before they start (consent dialog, versioned), see the status on
-every page, and recording stops the instant they press End duty, even offline.
+the audit log. Salesmen see the location-sharing notice at sign-in and in the persistent status banner. Automatic session startup sends the current notice version (`2026-11-v2`) through the existing duty API. Browser location permission controls access to GPS. Recording stops immediately on sign-out, including while offline; queued session closure is retried after reconnecting.
 
 ## Tests
 
@@ -189,9 +190,9 @@ every page, and recording stops the instant they press End duty, even offline.
 
 ## Visit photos
 
-Salesmen must attach at least **2 car photos** to every visit. The rule lives in the server (`record_visit`), so
-the check-out flow and any other client are held to it; `VISIT_MIN_PHOTOS` (env var, default 2) changes or switches
-it off (0).
+Car photos are **optional**: the Record Visit form offers them (with a "Capture location" button) and management sees both
+on the Visit page. If `VISIT_MIN_PHOTOS` (env var, default 0) is set above 0, the rule lives in the server (`record_visit`),
+so the check-out flow and any other client are held to that many photos.
 
 * Photos are staged first (`POST /api/visits/photos/`, multipart `image`), then their ids are sent with the visit
   (`photo_ids`). The visit, its order lines and its photos are written in one transaction; a visit short of photos

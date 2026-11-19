@@ -72,12 +72,12 @@ export default function SalesmanActivity({ rows, loading, error, onRetry, canAdd
       </div>
 
       {!loading && !error && rows.length === 0 ? (
-        <Card><EmptyState icon={<Users size={20} aria-hidden />} title="No active salesmen yet" hint="Add a salesman to start tracking field activity."
+        <Card><EmptyState icon={<Users size={20} aria-hidden />} title="No active salesman yet" hint="Add a salesman to start tracking field activity."
           action={canAdd ? <Link to="/salesmen" className={buttonClass('primary', 'sm')}><UserPlus size={14} aria-hidden />Add a salesman</Link> : undefined} /></Card>
       ) : (
         <>
-          <Table loading={loading} error={error} onRetry={onRetry} empty={shown.length === 0}
-            emptyTitle="No salesmen match your filters" emptyHint={filtered ? 'Try a different name or status.' : undefined}
+          <Table stack loading={loading} error={error} onRetry={onRetry} empty={shown.length === 0}
+            emptyTitle="No salesman match your filters" emptyHint={filtered ? 'Try a different name or status.' : undefined}
             head={[head('name', 'Salesman'), head('status', 'Status'), head('visits', 'Visits today'), head('new', 'New dealers'), head('orders', 'Orders'), head('due', 'Follow-ups due'), head('last', 'Last activity'), { label: 'Details', right: true }]}>
             {pageRows.map((s) => (
               <tr key={s.id}>
@@ -92,11 +92,11 @@ export default function SalesmanActivity({ rows, loading, error, onRetry, canAdd
                 <td className="tabular-nums">{s.new_dealers}</td>
                 <td className="tabular-nums">{s.orders}</td>
                 <td className="tabular-nums">{s.followups_due > 0 ? <Badge tone="amber">{s.followups_due}</Badge> : <span className="text-slate-500">0</span>}</td>
-                <td className="whitespace-nowrap text-slate-600">
+                <td className="text-slate-600 sm:whitespace-nowrap">
                   {s.last_visit_at ? <time dateTime={s.last_visit_at} title={`${fmtDate(s.last_visit_at)}, ${fmtTime(s.last_visit_at)}`}>{fmtRelative(s.last_visit_at)}</time> : <span className="text-slate-400">No visits yet</span>}
                 </td>
-                <td className="text-right">
-                  <Link to={`/salesmen/${s.id}`} aria-label={`View details for ${s.name}`} className={buttonClass('secondary', 'sm')}><Eye size={14} aria-hidden />View</Link>
+                <td className="text-right" data-label="">
+                  <Link to={`/salesmen/${s.id}`} aria-label={`View details for ${s.name}`} className={buttonClass('secondary', 'sm', 'max-sm:h-10 max-sm:w-full')}><Eye size={14} aria-hidden />View</Link>
                 </td>
               </tr>
             ))}

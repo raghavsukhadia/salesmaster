@@ -29,7 +29,7 @@ export default function FollowupsManagement() {
       <div className="mb-4"><Pills value={tab} onChange={(v) => { setTab(v); setPage(1) }} options={[['all', 'All'], ['overdue', 'Overdue'], ['due_today', 'Due Today'], ['upcoming', 'Upcoming'], ['completed', 'Completed']]} /></div>
       <SearchBox value={q} onChange={(v) => { setQ(v); setPage(1) }} placeholder="Search dealer, salesman, phone or follow-up" />
       <div className="mb-5 flex justify-end"><Select value={sort} onChange={(v) => { setSort(v); setPage(1) }}><option value="soon">Due soon</option><option value="latest">Due latest</option></Select></div>
-      <Table head={[{ label: 'Due' }, { label: 'Salesman' }, { label: 'Dealer' }, { label: 'Follow-up' }, { label: 'Priority' }, { label: 'Outcome' }, { label: 'Status' }, { label: 'Action' }]}
+      <Table stack head={[{ label: 'Due' }, { label: 'Salesman' }, { label: 'Dealer' }, { label: 'Follow-up' }, { label: 'Priority' }, { label: 'Outcome' }, { label: 'Status' }, { label: 'Action' }]}
         loading={loading} error={error} empty={data?.results.length === 0}>
         {data?.results.map((f) => {
           const [tone, label] = TONE[f.state] ?? TONE.upcoming

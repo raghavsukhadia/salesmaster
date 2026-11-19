@@ -11,8 +11,10 @@ export type Chosen = { kind: 'existing'; dealer: DealerLite } | { kind: 'new'; d
 
 export interface ScanState {
   phase: 'idle' | 'camera' | 'reading' | 'done' | 'error'
-  /** Object URL of the photo being read or reviewed. */
-  previewUrl?: string
+  /** The card photos taken so far, front first. Reading starts once there are CARD_PHOTOS of them. Kept as blobs so previews survive leaving the step. */
+  shots?: Blob[]
+  /** Which photo (1-based) is being read right now. */
+  readingPhoto?: number
   progress?: OcrProgress
   message?: string
   /** The message is about the camera itself, so offering the phone's own camera app as a way round it makes sense. */

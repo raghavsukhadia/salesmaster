@@ -169,7 +169,7 @@ def test_rules_endpoint_tells_the_form_what_is_required(sam, need2):
 @pytest.mark.parametrize("have", [0, 1])
 def test_a_visit_with_fewer_than_two_car_photos_is_refused_and_nothing_is_written(sam, need2, have):
     c = api(sam.user)
-    body = {"new_dealer": {"name": "Brand New Motors", "phone": "9123456780", "city": "Pune"}, "client_request_id": str(uuid.uuid4()),
+    body = {"new_dealer": {"name": "Brand New Motors", "phone": "9123456780", "city": "Pune", "latitude": "18.5204", "longitude": "73.8567"}, "client_request_id": str(uuid.uuid4()),
             "photo_ids": stage(c, have)}
     r = c.post(REC, body, format="json")
     assert r.status_code == 400 and "at least 2 car photos" in str(r.data["photo_ids"]) and f"you have {have}" in str(r.data["photo_ids"])

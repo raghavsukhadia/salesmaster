@@ -15,6 +15,7 @@ interface LiveFix { latitude: number; longitude: number; accuracy_m: number; qua
 interface LiveSalesman {
   id: number; name: string; phone: string; on_duty: boolean; status: TrackStatus; is_live: boolean; age_s: number | null
   session_started_at: string | null; last_contact_at: string | null; last_duty_ended_at: string | null; last_fix: LiveFix | null
+  last_seen_s: number | null // age of last_fix; off duty this is the last known position from the latest session
 }
 interface Live { generated_at: string; thresholds: { live_s: number; stale_s: number }; counts: Record<TrackStatus, number>; salesmen: LiveSalesman[] }
 interface DealerPin {
@@ -100,17 +101,15 @@ export default function FieldMap({ mode = 'tracking' }: { mode?: 'tracking' | 'n
   // Each row's status as it deserves to be shown *now* (degrades if updates stop arriving).
   const elapsed = polledAt ? Math.max(0, (now - polledAt) / 1000) : 0
   const rows = useMemo(() => (live?.salesmen ?? []).map((s) => {
-    if (!s.on_duty || s.age_s === null || !live) return { ...s, shownStatus: s.status, shownAge: s.age_s }
+    if (!s.on_duty || s.age_s === null || !live) return { ...s, shownStatus: s.status, shownAge: s.last_seen_s === null ? null : s.last_seen_s + elapsed }
     const age = s.age_s + elapsed
     return { ...s, shownStatus: statusAtAge(age, live.thresholds) as TrackStatus, shownAge: age }
   }), [live, elapsed])
   const selSalesman = sel?.kind === 'salesman' ? rows.find((r) => r.id === sel.id) : undefined
   const originSalesman = origin?.kind === 'salesman' ? rows.find((r) => r.id === origin.id) : undefined
   const selectedSalesmanId = origin?.kind === 'salesman' ? String(origin.id) : ''
-  const focusMarkerId = mode === 'tracking' && originSalesman?.on_duty && originSalesman.last_fix ? `s${originSalesman.id}` : undefined
-  const mapFitKey = mode === 'tracking'
-    ? focusMarkerId ?? `dealers-${dealerMap?.located ?? 0}`
-    : fitKey
+  // Tracking always shows the whole of India first (also after picking a salesman); clicking the salesman icon zooms in.
+  const mapFitKey = mode === 'tracking' ? `india-${selectedSalesmanId}` : fitKey
 
   async function loadNearby(o: NonNullable<Origin>, r: Radius) {
     setBusy(true); setMsg('')
@@ -134,7 +133,7 @@ export default function FieldMap({ mode = 'tracking' }: { mode?: 'tracking' | 'n
       setNearest(null)
       const body = (e as { data?: { dealer?: string[] | string } }).data
       const d = body?.dealer
-      setMsg(Array.isArray(d) ? d[0] : d ?? 'Could not load nearest salesmen.')
+      setMsg(Array.isArray(d) ? d[0] : d ?? 'Could not load nearest salesman.')
     } finally { setBusy(false) }
   }
 
@@ -143,7 +142,7 @@ export default function FieldMap({ mode = 'tracking' }: { mode?: 'tracking' | 'n
     const s = rows.find((r) => r.id === id)
     if (mode === 'tracking') { setNearby(null); setMsg('') }
     else if (s && s.last_fix) void loadNearby({ kind: 'salesman', id }, radius)
-    else { setNearby(null); setMsg(s?.on_duty ? 'On duty, but no position has arrived yet.' : 'Off duty. No location is recorded.') }
+    else { setNearby(null); setMsg(s?.on_duty ? 'On duty, but no position has arrived yet.' : 'No location has been recorded for this salesman yet.') }
     if (s?.last_fix) setFitKey(`sel-${id}`)
   }
 
@@ -184,13 +183,13 @@ export default function FieldMap({ mode = 'tracking' }: { mode?: 'tracking' | 'n
   const markers: MapMarker[] = useMemo(() => {
     const m: MapMarker[] = []
     for (const s of rows) {
-      if (!s.last_fix || !s.on_duty) continue
+      if (!s.last_fix) continue
       if (mode === 'tracking' && (origin?.kind !== 'salesman' || origin.id !== s.id)) continue
       const st = s.shownStatus
       m.push({
         id: `s${s.id}`, kind: 'salesman', status: st, lat: s.last_fix.latitude, lng: s.last_fix.longitude,
         label: s.name, initial: s.name.trim().charAt(0).toUpperCase(),
-        detail: `${STATUS_META[st].label} · position ${fmtAge(s.shownAge)} · ${fmtAccuracy(s.last_fix.accuracy_m)}`,
+        detail: `${s.on_duty ? STATUS_META[st].label : 'Last seen'} · position ${fmtAge(s.shownAge)} · ${fmtAccuracy(s.last_fix.accuracy_m)}`,
         selected: sel?.kind === 'salesman' && sel.id === s.id,
       })
     }
@@ -243,8 +242,14 @@ export default function FieldMap({ mode = 'tracking' }: { mode?: 'tracking' | 'n
               {[...rows].sort((a, b) => a.name.localeCompare(b.name)).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </label>
-          {mode === 'tracking' && originSalesman && (!originSalesman.on_duty || !originSalesman.last_fix) && (
-            <p role="status" className="mt-2 text-sm text-slate-500">{originSalesman.on_duty ? 'Waiting for this salesman’s GPS location.' : 'This salesman is off duty. No location is recorded.'}</p>
+          {mode === 'tracking' && originSalesman && (
+            <p role="status" className="mt-2 text-sm text-slate-500">
+              {originSalesman.last_fix
+                ? originSalesman.on_duty
+                  ? `${STATUS_META[originSalesman.shownStatus].label} · location ${fmtAge(originSalesman.shownAge)} · tap the blue icon to zoom in`
+                  : `App closed · last seen ${fmtAge(originSalesman.shownAge)} (${fmtTime(originSalesman.last_fix.captured_at)}) · tap the blue icon to zoom in`
+                : originSalesman.on_duty ? 'App open. Waiting for this salesman’s GPS location (location permission must be allowed).' : 'No location recorded yet. The salesman must open the app and allow location.'}
+            </p>
           )}
 
           {mode === 'nearby' && <>
@@ -297,10 +302,10 @@ export default function FieldMap({ mode = 'tracking' }: { mode?: 'tracking' | 'n
 
           {sel?.kind === 'dealer' && (
             <div className="rounded-xl border bg-white p-4 shadow-card text-sm">
-              <h2 className="font-semibold">Closest salesmen{nearest ? ` to ${nearest.dealer.name}` : ''}</h2>
+              <h2 className="font-semibold">Closest salesman{nearest ? ` to ${nearest.dealer.name}` : ''}</h2>
               <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
                 <input type="checkbox" checked={includeStale} onChange={(e) => { setIncludeStale(e.target.checked); void loadNearest(sel.id, e.target.checked) }} />
-                Include salesmen whose position is stale
+                Include salesman whose position is stale
               </label>
               {nearest && nearest.results.length === 0 && <p className="mt-3 text-slate-500">No on-duty salesman with a {includeStale ? '' : 'live '}position.</p>}
               <ul className="mt-2 divide-y">
@@ -334,19 +339,19 @@ export default function FieldMap({ mode = 'tracking' }: { mode?: 'tracking' | 'n
             {dealerMap?.total === 0 && <p>No dealers saved yet. Dealers with saved coordinates will appear here.</p>}
             {!!dealerMap?.missing_location && <p>{dealerMap.missing_location} dealer{dealerMap.missing_location === 1 ? ' needs' : 's need'} a saved location before appearing on the map. <Link to="/dealer-locations" className="font-medium text-primary hover:underline">Set dealer locations</Link>.</p>}
           </div>}
-          <LeafletMap className="h-[calc(100vh-16rem)] min-h-[28rem]" label={mode === 'tracking' ? 'India dealer locations and selected salesman' : 'Map of on-duty salesmen and nearby dealers'} markers={markers} circles={circles} line={line}
-            fitKey={mapFitKey} focusMarkerId={focusMarkerId} onMarkerClick={onMarkerClick} onMapClick={mode === 'nearby' && pick ? onMapClick : undefined} />
+          <LeafletMap className="h-[calc(100vh-16rem)] min-h-[28rem]" label={mode === 'tracking' ? 'India dealer locations and selected salesman' : 'Map of on-duty salesman and nearby dealers'} markers={markers} circles={circles} line={line}
+            fitKey={mapFitKey} onMarkerClick={onMarkerClick} onMapClick={mode === 'nearby' && pick ? onMapClick : undefined} zoomOnSalesmanClick={mode === 'tracking'} />
           <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-slate-600" aria-label="Map legend">
             <span className="flex items-center gap-1.5"><MapPin size={18} className="text-red-600" aria-hidden />Dealer location</span>
             <span className="flex items-center gap-1.5"><span className="grid size-5 place-items-center rounded-full bg-blue-600 text-white"><UserRound size={13} aria-hidden /></span>Salesman position</span>
           </div>
           {mode === 'nearby' && <><div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 whitespace-normal text-xs text-slate-600">
             <span className="flex items-center gap-1.5"><span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-white bg-blue-600 shadow" />Live (position within {live ? Math.round(live.thresholds.live_s / 60) : 2} min)</span>
-            <span className="flex items-center gap-1.5"><span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-dashed border-amber-600 bg-white" />Stale: last known position, may have moved</span>
-            <span className="flex items-center gap-1.5"><span className="inline-block h-3.5 w-3.5 rounded-full border-2 border-dashed border-slate-500 bg-white" />Signal lost</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full bg-amber-600" />Amber dot: stale, may have moved</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-full bg-slate-500" />Grey dot: signal lost or app closed</span>
             <span className="flex items-center gap-1.5"><MapPin size={16} className="text-red-600" aria-hidden />Dealer, solid outline = verified; dashed = not verified</span>
           </div>
-          {counts && counts.off_duty > 0 && <p className="mt-2 text-xs text-slate-500">{counts.off_duty} off-duty salesm{counts.off_duty === 1 ? 'an is' : 'en are'} not shown on the map: no location is recorded off duty.</p>}
+          {counts && counts.off_duty > 0 && <p className="mt-2 text-xs text-slate-500">{counts.off_duty} salesm{counts.off_duty === 1 ? 'an has' : 'en have'} the app closed: their last known position is shown in grey.</p>}
           <p className="mt-1 text-xs text-slate-500">Map data © OpenStreetMap contributors. Dealers without a saved location are not shown; <Link to="/dealer-locations" className="text-primary">fix them in Dealer Locations</Link>.</p></>}
         </section>
       </div>

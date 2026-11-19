@@ -1,4 +1,4 @@
-import { ChartColumn, ClipboardCheck, ClipboardPlus, CalendarClock, History, LayoutDashboard, LocateFixed, Radar, Route, Settings, SlidersHorizontal, Store, Users } from 'lucide-react'
+import { ChartColumn, ClipboardCheck, ClipboardPlus, CalendarClock, History, LayoutDashboard, Radar, Settings, SlidersHorizontal, Store, Users } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 export interface NavChild { label: string; to: string }
@@ -25,7 +25,6 @@ export const managementNav: NavItem[] = [
   { label: 'Salesman', icon: Users, to: '/salesmen' },
   { label: 'Visits', icon: ClipboardCheck, to: '/visits' },
   { label: 'Follow-ups', icon: CalendarClock, to: '/followups-management' },
-  { label: 'Beat Planning', icon: Route, soon: 'Not available yet: there is no beat or route plan to store. It needs a new planning table first.' },
   { label: 'Live Salesman Tracking', icon: Radar, to: '/field-map' },
   {
     label: 'Management', icon: SlidersHorizontal,
@@ -35,10 +34,9 @@ export const managementNav: NavItem[] = [
       { label: 'Access Grants', to: '/dealers/access-grants' },
       { label: 'Transfer Area', to: '/dealers/transfer' },
       { label: 'Dealer Locations', to: '/dealer-locations' },
-      { label: 'Field Settings', to: '/field-settings' },
     ],
   },
-  { label: 'Settings', icon: Settings, soon: 'Not available yet: there are no application settings to manage.' },
+  { label: 'Settings', icon: Settings, to: '/settings' },
 ]
 
 export const salesmanNav: NavItem[] = [
@@ -46,8 +44,6 @@ export const salesmanNav: NavItem[] = [
   { label: 'My Dealers', icon: Store, to: '/my-dealers' },
   { label: 'Visit History', icon: History, to: '/visit-history' },
   { label: 'Follow-ups', icon: CalendarClock, to: '/followups', badge: 'followups' },
-  { label: 'Field Duty', icon: LocateFixed, to: '/field' },
-  { label: 'Reports', icon: ChartColumn, soon: 'Coming soon: personal sales reports are not available to salesmen yet.' },
 ]
 
 /** Which top-level item is "current" for a path. Management sub-pages light up Management, not Dealers. */

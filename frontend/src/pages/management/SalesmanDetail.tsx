@@ -199,7 +199,7 @@ function Tabs({ id, version }: { id: number; version: number }) {
     <section className="mb-6">
       <div className="mb-3"><Pills value={tab} onChange={setTab} options={[['visits', 'Visit history'], ['dealers', 'Owned dealers']]} /></div>
       {tab === 'visits' ? (
-        <Table head={[{ label: 'When' }, { label: 'Dealer' }, { label: 'Location' }, { label: 'Order' }, { label: 'Follow-up' }]} loading={v.loading} error={v.error} empty={v.data?.count === 0}>
+        <Table stack head={[{ label: 'When' }, { label: 'Dealer' }, { label: 'Location' }, { label: 'Order' }, { label: 'Follow-up' }]} loading={v.loading} error={v.error} empty={v.data?.count === 0}>
           {v.data?.results.map((r) => (
             <tr key={r.id}>
               <td className="px-4 py-4">{fmtDate(r.visited_at)} {fmtTime(r.visited_at)}</td><td className="px-4">{r.dealer}</td><td className="px-4">{r.location || '—'}</td>
@@ -208,7 +208,7 @@ function Tabs({ id, version }: { id: number; version: number }) {
           ))}
         </Table>
       ) : (
-        <Table head={[{ label: 'Dealer' }, { label: 'Phone' }, { label: 'Location' }, { label: 'Status' }, { label: 'Last visit' }]} loading={d.loading} error={d.error} empty={d.data?.count === 0}>
+        <Table stack head={[{ label: 'Dealer' }, { label: 'Phone' }, { label: 'Location' }, { label: 'Status' }, { label: 'Last visit' }]} loading={d.loading} error={d.error} empty={d.data?.count === 0}>
           {d.data?.results.map((r) => (
             <tr key={r.id}>
               <td className="px-4 py-4"><Link to={`/dealers/${r.id}`} className="text-primary hover:underline">{r.name}</Link></td><td className="px-4">{r.phone}</td>

@@ -9,7 +9,9 @@ from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsSalesman
 from apps.dealers.access import accessible_dealers
+from apps.dealers.services import is_current_owner
 from apps.management.views import PAGE_SIZE, followup_state
+from apps.reports.ranges import parse_day
 
 from .followup_service import apply_action, create_followup, order_by_due, own_followups, tab_filter
 from .models import Followup, Visit, VisitOrderItem
@@ -51,7 +53,7 @@ def followup_row(f, today):
     return {
         "id": f.id, "dealer": dealer_brief(f.dealer), "due_date": f.due_date, "due_time": hhmm(f.due_time), "status": f.status,
         "state": followup_state(f, today), "priority": f.priority, "outcome": f.outcome,
-        "notes": f.notes, "visit_id": f.visit_id,
+        "action": f.action, "task": f.task, "notes": f.notes, "visit_id": f.visit_id,
     }
 
 
@@ -90,6 +92,15 @@ class SalesmanVisitListView(APIView):
             qs = qs.filter(visited_at__date=timezone.localdate())
         elif days:
             qs = qs.filter(visited_at__gte=now - timedelta(days=days))
+        # Inclusive calendar days in the server's local time zone, same basis as range=today. Either bound may be omitted.
+        start = parse_day(p["from"], "from") if p.get("from") else None
+        end = parse_day(p["to"], "to") if p.get("to") else None
+        if start and end and start > end:
+            raise ValidationError({"from": "The start date must not be after the end date"})
+        if start:
+            qs = qs.filter(visited_at__date__gte=start)
+        if end:
+            qs = qs.filter(visited_at__date__lte=end)
         if p.get("order") == "yes":
             qs = qs.filter(order_items__isnull=False).distinct()
         elif p.get("order") == "no":
@@ -134,7 +145,8 @@ class SalesmanVisitDetailView(APIView):
         return Response({
             "id": v.id, "visited_at": v.visited_at, "source": v.source, "notes": v.notes, "status": visit_status(v),
             "salesman": v.salesman_name,
-            "dealer": {**dealer_brief(d), "shop_name": d.shop_name, "state": d.state, "address": d.address},
+            "dealer": {**dealer_brief(d), "shop_name": d.shop_name, "state": d.state, "address": d.address, "pincode": d.pincode,
+                       "can_edit": is_current_owner(request.user, d)},
             "location": {"lat": num(v.visit_lat), "lng": num(v.visit_lng), "source": v.location_source, "captured_at": v.location_captured_at},
             "order_items": [
                 {"name": i.product_name, "quantity": i.quantity, "unit": i.unit,

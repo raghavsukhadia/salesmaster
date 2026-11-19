@@ -37,8 +37,13 @@ def other():
 
 def new_dealer_payload(**over):
     d = {"name": "Sharma Auto", "phone": "+91 98765 43210", "city": "Pune", "state": "MH", "contact_name": "Raj"}
+    if "latitude" not in over and "longitude" not in over:  # the shop location is required; tests of it pass their own
+        d.update(SHOP)
     d.update(over)
     return d
+
+
+SHOP = {"latitude": "18.520400", "longitude": "73.856700", "location_accuracy_m": 15}
 
 
 def tomorrow():
@@ -87,12 +92,25 @@ def test_new_dealer_detected_location_is_stored_unverified(sm):
     assert d.location_verified_at is None and d.location_verified_by is None
 
 
-def test_new_dealer_without_detected_location_has_none(sm):
+def test_new_dealer_without_shop_location_is_refused_and_nothing_created(sm):
     user, _ = sm
-    r = client_for(user).post(URL, {"new_dealer": new_dealer_payload()}, format="json")
+    nd = {k: v for k, v in new_dealer_payload().items() if k not in SHOP}
+    r = client_for(user).post(URL, {"new_dealer": nd}, format="json")
+    assert r.status_code == 400 and "location" in r.data["new_dealer"]
+    assert Dealer.objects.count() == 0 and Visit.objects.count() == 0
+
+
+def test_shop_location_capture_appears_in_the_management_history(sm):
+    from apps.accounts.models import Role
+    from apps.accounts.models import User as U
+    user, _ = sm
+    r = client_for(user).post(URL, {"new_dealer": new_dealer_payload(location_accuracy_m=22)}, format="json")
     assert r.status_code == 201, r.data
-    d = Visit.objects.get(pk=r.data["visit_id"]).dealer
-    assert d.latitude is None and d.longitude is None and d.location_source == ""
+    dealer = Visit.objects.get(pk=r.data["visit_id"]).dealer
+    admin = U.objects.create_user("boss", password="x", role=Role.ADMIN)
+    h = client_for(admin).get(f"/api/management/dealers/{dealer.id}/location/").data["history"]
+    assert len(h) == 1 and h[0]["event"] == "captured" and h[0]["by_role"] == "salesman"
+    assert (h[0]["latitude"], h[0]["longitude"], h[0]["accuracy_m"]) == (18.5204, 73.8567, 22.0)
 
 
 @pytest.mark.parametrize("loc", [
@@ -168,7 +186,7 @@ def test_same_name_and_city_with_different_mobiles_is_allowed(sm):
     user, salesman = sm
     d = Dealer.objects.create(name="sharma auto", city="pune", phone="9111111111")
     DealerOwnershipHistory.objects.create(dealer=d, salesman=salesman)
-    r = client_for(user).post(URL, {"new_dealer": {"name": "SHARMA AUTO", "city": "Pune", "phone": "9222222222"}}, format="json")
+    r = client_for(user).post(URL, {"new_dealer": {"name": "SHARMA AUTO", "city": "Pune", "phone": "9222222222", **SHOP}}, format="json")
     assert r.status_code == 201
     assert Dealer.objects.filter(name__iexact="sharma auto", city__iexact="pune").count() == 2
 
@@ -218,17 +236,20 @@ def test_failure_rolls_back_everything(sm, monkeypatch):
 
 @pytest.mark.parametrize("payload", [
     {},
-    {"dealer_id": 1, "new_dealer": {"name": "x", "city": "y"}},
-    {"new_dealer": {"name": "No Identity"}},
-    {"new_dealer": {"name": "x", "city": "y", "gst_number": "BAD"}},
-    {"new_dealer": {"name": "x", "city": "y", "pincode": "12"}},
-    {"new_dealer": {"name": "x", "city": "y"}, "has_order": True},
-    {"new_dealer": {"name": "x", "city": "y"}, "has_order": True, "order_items": [{"product_name": "a", "quantity": 0}]},
-    {"new_dealer": {"name": "x", "city": "y"}, "has_order": True, "order_items": [{"quantity": 1}]},
-    {"new_dealer": {"name": "x", "city": "y"}, "latitude": "10"},
-    {"new_dealer": {"name": "x", "city": "y"}, "latitude": "95", "longitude": "10"},
-    {"new_dealer": {"name": "x", "city": "y"}, "followup": {"due_date": "2000-01-01"}},
-    {"new_dealer": {"name": "x", "city": "y"}, "visited_at": "2999-01-01T00:00:00Z"},
+    {"dealer_id": 1, "new_dealer": {"name": "x", "city": "y", **SHOP}},
+    {"new_dealer": {"name": "No Identity", **SHOP}},
+    {"new_dealer": {"name": "x", "city": "y", "gst_number": "BAD", **SHOP}},
+    {"new_dealer": {"name": "x", "city": "y", "pincode": "12", **SHOP}},
+    {"new_dealer": {"name": "x", "city": "y", **SHOP}, "has_order": True},
+    {"new_dealer": {"name": "x", "city": "y", **SHOP}, "has_order": True, "order_items": [{"product_name": "a", "quantity": 0}]},
+    {"new_dealer": {"name": "x", "city": "y", **SHOP}, "has_order": True, "order_items": [{"quantity": 1}]},
+    {"new_dealer": {"name": "x", "city": "y", **SHOP}, "latitude": "10"},
+    {"new_dealer": {"name": "x", "city": "y", **SHOP}, "latitude": "95", "longitude": "10"},
+    {"new_dealer": {"name": "x", "city": "y", **SHOP}, "followup": {"due_date": "2000-01-01"}},
+    {"new_dealer": {"name": "x", "city": "y", **SHOP}, "followup": {"due_date": tomorrow(), "action": "other"}},
+    {"new_dealer": {"name": "x", "city": "y", **SHOP}, "followup": {"due_date": tomorrow(), "action": "other", "action_text": "   "}},
+    {"new_dealer": {"name": "x", "city": "y", **SHOP}, "followup": {"due_date": tomorrow(), "action": "teleport"}},
+    {"new_dealer": {"name": "x", "city": "y", **SHOP}, "visited_at": "2999-01-01T00:00:00Z"},
 ])
 def test_validation_errors_create_nothing(sm, payload):
     user, _ = sm
@@ -282,3 +303,39 @@ def test_product_list_active_only_and_searchable(sm):
     r = client_for(user).get("/api/products/", {"q": "film"})
     assert [p["name"] for p in r.data] == ["Film Alpha"]
     assert APIClient().get("/api/products/").status_code == 401
+
+
+def record_with_followup(user, followup):
+    r = client_for(user).post(URL, {"new_dealer": new_dealer_payload(), "followup": followup}, format="json")
+    assert r.status_code == 201, r.data
+    return Followup.objects.get(visit_id=r.data["visit_id"]), r.data["visit_id"]
+
+
+def test_followup_keeps_the_chosen_action_and_shows_it_as_the_task(sm):
+    user, _ = sm
+    fu, visit_id = record_with_followup(user, {"due_date": tomorrow(), "action": "send_quotation", "notes": "Revised PPF pricing"})
+    assert (fu.action, fu.action_text, fu.task, fu.notes) == ("send_quotation", "", "Send quotation", "Revised PPF pricing")
+    c = client_for(user)
+    detail = c.get(f"/api/salesman/visits/{visit_id}/")
+    assert [(f["action"], f["task"]) for f in detail.data["followups"]] == [("send_quotation", "Send quotation")]
+    assert c.get("/api/salesman/followups/").data["results"][0]["task"] == "Send quotation"
+
+
+def test_other_action_uses_the_typed_text_as_the_task(sm):
+    user, _ = sm
+    fu, _ = record_with_followup(user, {"due_date": tomorrow(), "action": "other", "action_text": "  Confirm installation date "})
+    assert (fu.action, fu.action_text, fu.task) == ("other", "Confirm installation date", "Confirm installation date")
+
+
+def test_text_is_dropped_when_the_action_is_not_other(sm):
+    user, _ = sm
+    fu, _ = record_with_followup(user, {"due_date": tomorrow(), "action": "call_dealer", "action_text": "something else"})
+    assert (fu.action_text, fu.task) == ("", "Call dealer")
+
+
+def test_followup_without_an_action_still_works_and_has_no_task(sm):
+    # Older clients and field check-ins send no action; the follow-up is still created.
+    user, _ = sm
+    fu, visit_id = record_with_followup(user, {"due_date": tomorrow()})
+    assert (fu.action, fu.action_text, fu.task) == ("", "", "")
+    assert client_for(user).get(f"/api/salesman/visits/{visit_id}/").data["followups"][0]["task"] == ""

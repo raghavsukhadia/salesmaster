@@ -11,6 +11,9 @@ interface Dealer {
   status: string; orders: number; last_visit_at: string | null; mine: boolean
 }
 
+const areaChip = (on: boolean) =>
+  `min-w-0 rounded-xl border px-4 py-3 text-left text-sm transition-colors sm:w-52 ${on ? 'border-primary bg-primary text-white shadow-sm' : 'bg-white text-slate-900 hover:bg-slate-50'}`
+
 export default function MyDealers() {
   const [params, setParams] = useSearchParams()
   const state = params.get('state') ?? ''
@@ -31,21 +34,26 @@ export default function MyDealers() {
 
   return (
     <>
-      <PageHeader title="My Dealers" subtitle="Your assigned areas, dealer details and complete order history."
-        action={<Button variant="secondary" onClick={() => { areas.reload(); reload() }}>Refresh</Button>} />
+      <PageHeader title="My Dealers" inlineAction
+        action={<Button variant="secondary" size="sm" onClick={() => { areas.reload(); reload() }}>Refresh</Button>} />
       <section aria-label="Assigned areas" className="mb-6">
         <h2 className="mb-3 font-semibold">Assigned areas</h2>
         {areas.loading && !areas.data && <p role="status" className="text-sm text-slate-500">Loading areas...</p>}
         {areas.error && <p role="alert" className="text-sm text-red-700">Could not load areas. Please refresh.</p>}
         {areas.data && areas.data.areas.length === 0 && <Card>No areas or dealers assigned yet.</Card>}
-        <div className="flex flex-wrap gap-3">
-          {!!areas.data?.areas.length && <Button variant={state ? 'secondary' : 'primary'} onClick={() => choose('')}>All areas ({areas.data.dealers})</Button>}
+        {/* Every chip, "All areas" included, is the same card so they line up: two per row on phones, wrapping on wider screens. */}
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap">
+          {!!areas.data?.areas.length && (
+            <button type="button" aria-pressed={!state} onClick={() => choose('')} className={areaChip(!state)}>
+              <span className="block truncate font-semibold">All areas</span>
+              <span className={`text-xs ${!state ? 'text-white/85' : 'text-slate-600'}`}>{areas.data.dealers} {areas.data.dealers === 1 ? 'dealer' : 'dealers'}</span>
+            </button>
+          )}
           {areas.data?.areas.map((a) => (
-            <button key={a.key} type="button" aria-pressed={state === a.key} onClick={() => choose(a.key)}
-              className={`rounded-xl border px-4 py-3 text-left text-sm ${state === a.key ? 'border-primary bg-primary-soft text-primary' : 'bg-white hover:bg-slate-50'}`}>
-              <span className="block font-semibold">{a.label}</span>
-              <span className="text-xs">{a.dealers} dealers · {a.orders} orders</span>
-              {a.cities.length > 0 && <span className="mt-1 block max-w-64 text-xs text-slate-500">{a.cities.map((c) => c.city).join(', ')}</span>}
+            <button key={a.key} type="button" aria-pressed={state === a.key} onClick={() => choose(a.key)} className={areaChip(state === a.key)}>
+              <span className="block truncate font-semibold">{a.label}</span>
+              <span className={`block text-xs ${state === a.key ? 'text-white/85' : 'text-slate-600'}`}>{a.dealers} {a.dealers === 1 ? 'dealer' : 'dealers'} · {a.orders} {a.orders === 1 ? 'order' : 'orders'}</span>
+              {a.cities.length > 0 && <span className={`mt-1 block truncate text-xs ${state === a.key ? 'text-white/70' : 'text-slate-500'}`}>{a.cities.map((c) => c.city).join(', ')}</span>}
             </button>
           ))}
         </div>
@@ -55,7 +63,7 @@ export default function MyDealers() {
         <option value="">All cities in {selected.label}</option>
         {cities.map((c) => <option key={c.city} value={c.city}>{c.city} ({c.dealers})</option>)}
       </Select></div>}
-      <Table head={['Dealer', 'Location', 'Status', 'Orders', 'Last visit', 'Details'].map((label) => ({ label }))}
+      <Table stack head={['Dealer', 'Location', 'Status', 'Orders', 'Last visit', 'Details'].map((label) => ({ label }))}
         loading={loading} error={error} empty={data?.results.length === 0}>
         {data?.results.map((d) => (
           <tr key={d.id}>
@@ -65,7 +73,7 @@ export default function MyDealers() {
             <td className="px-3">{d.status ? <Badge>{d.status}</Badge> : '—'}</td>
             <td className="px-3 tabular-nums">{d.orders}</td>
             <td className="px-3 text-slate-600">{fmtDate(d.last_visit_at, true)}</td>
-            <td className="px-3"><Link to={`/my-dealers/${d.id}`} className={buttonClass('secondary', 'sm')} aria-label={`View ${d.name} details and orders`}>View details & orders</Link></td>
+            <td className="px-3" data-label=""><Link to={`/my-dealers/${d.id}`} className={buttonClass('secondary', 'sm', 'max-sm:h-10 max-sm:w-full')} aria-label={`View ${d.name} details and orders`}>View details & orders</Link></td>
           </tr>
         ))}
       </Table>

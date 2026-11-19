@@ -11,6 +11,12 @@ def current_owner(dealer):
     return dealer.ownerships.filter(ended_at__isnull=True).select_related("salesman__user").first()
 
 
+def is_current_owner(user, dealer) -> bool:
+    """True only for the salesman who owns the dealer right now (an access grant does not count)."""
+    owner = current_owner(dealer)
+    return bool(owner and owner.salesman.user_id == user.id)
+
+
 def _active_salesman(salesman_id) -> Salesman:
     salesman = Salesman.objects.filter(pk=salesman_id, is_active=True).select_related("user").first()
     if salesman is None:

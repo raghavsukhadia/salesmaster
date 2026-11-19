@@ -38,6 +38,27 @@
   input[type="checkbox"], input[type="radio"] { accent-color: var(--color-primary); }
 }
 
+/*
+ * Table -> cards on phones. Opt in with <Table stack>. Below 640px each row becomes a card: the first cell is its title, every
+ * other cell shows its column name in front (Table writes data-label), and a cell with data-label="" has no name (an action).
+ * Unlayered on purpose: it has to beat the utility classes (px-3, py-3 ...) that callers put on the cells.
+ */
+@media (max-width: 639px) {
+  .stack-table, .stack-table tbody, .stack-table tr, .stack-table td { display: block; min-width: 0; }
+  .stack-table { width: 100%; }
+  .stack-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .stack-table tr { padding: 0.75rem 1rem; }
+  .stack-table td { position: relative; padding: 0.3rem 0 0.3rem 7rem; text-align: left; overflow-wrap: anywhere; }
+  .stack-table td::before {
+    content: attr(data-label); position: absolute; left: 0; top: 0.3rem; width: 6.5rem; padding-right: 0.5rem;
+    font-size: 0.6875rem; line-height: 1.2; font-weight: 500; letter-spacing: 0.03em; text-transform: uppercase; color: var(--color-slate-500);
+  }
+  .stack-table td:first-child, .stack-table td[data-label=""] { padding-left: 0; }
+  .stack-table td:first-child::before, .stack-table td[data-label=""]::before { content: none; }
+  .stack-table td:first-child { padding-bottom: 0.5rem; font-weight: 600; color: var(--color-slate-900); }
+  .stack-table td[data-label=""]:last-child { padding-top: 0.75rem; padding-bottom: 0; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

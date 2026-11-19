@@ -1,12 +1,14 @@
 from django.db.models import Q
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
 from apps.dealers.access import accessible_dealers
 
 from .permissions import IsAdmin, IsManagement, IsSalesman
-from .serializers import LoginSerializer
+from .serializers import ChangePasswordSerializer, LoginSerializer
 from .throttles import LoginAccountThrottle, LoginAddressThrottle
 
 
@@ -25,6 +27,27 @@ class MeView(APIView):
             "id": u.id, "username": u.username, "role": u.role,
             "name": u.get_full_name().strip() or u.username, "designation": u.get_role_display(),
         })
+
+
+class ChangePasswordView(APIView):
+    """Any signed-in user changes their own password.
+
+    Tokens carry a hash of the password they were issued under (SIMPLE_JWT CHECK_REVOKE_TOKEN), so this signs the account
+    out everywhere, this browser included. The reply therefore carries a fresh token pair for the caller to keep, and every
+    other session has to sign in again. Guesses at the current password are rate limited.
+    """
+
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "password_change"
+
+    def post(self, request):
+        s = ChangePasswordSerializer(data=request.data, context={"request": request})
+        s.is_valid(raise_exception=True)
+        user = request.user
+        user.set_password(s.validated_data["new_password"])
+        user.save(update_fields=["password"])
+        refresh = RefreshToken.for_user(user)
+        return Response({"refresh": str(refresh), "access": str(refresh.access_token)})
 
 
 class SalesmanDealersView(APIView):

@@ -28,7 +28,7 @@ def client_for(user):
 
 
 def payload(**dealer):
-    d = {"name": "Sharma Auto", "phone": "98765 43210", "city": "Pune", "state": "MH"}
+    d = {"name": "Sharma Auto", "phone": "98765 43210", "city": "Pune", "state": "MH", "latitude": "18.5204", "longitude": "73.8567"}
     d.update(dealer)
     return {"client_request_id": str(uuid.uuid4()), "new_dealer": d}
 
@@ -195,7 +195,7 @@ def test_simultaneous_dealer_creation_yields_exactly_one_dealer():
             visit, created = services.record_visit(
                 user,
                 {"client_request_id": str(uuid.uuid4()),
-                 "new_dealer": {"name": f"Shop {user.username}", "phone": phone, "city": user.username}},
+                 "new_dealer": {"name": f"Shop {user.username}", "phone": phone, "city": user.username, "latitude": "18.5204", "longitude": "73.8567"}},
             )
             results.append(("ok", visit.dealer_id))
         except (DuplicateDealer, DealerNotAvailable, ValidationError) as e:

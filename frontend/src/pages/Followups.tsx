@@ -4,12 +4,12 @@ import { api, ApiError } from '../auth'
 import { Badge, Button, Card, EmptyState, flatten, Modal, Pager, qs, useApi, useDebounced } from '../components/ui'
 import DealerPicker from '../visit/DealerPicker'
 import { notifyFollowupsChanged } from '../visit/followupBadge'
-import { fmtDue, localDate } from '../visit/format.ts'
+import { fmtDue, localDate, localTime } from '../visit/format.ts'
 import type { DealerLite } from '../visit/types.ts'
 
 export interface FollowupRow {
   id: number; dealer: { id: number; name: string; phone: string; city: string }; due_date: string; due_time: string | null; status: string
-  state: string; priority: string; outcome: string; notes: string; visit_id: number | null
+  state: string; priority: string; outcome: string; action: string; task: string; notes: string; visit_id: number | null
 }
 interface Data { counts: Record<Tab, number>; count: number; results: FollowupRow[] }
 
@@ -21,6 +21,8 @@ const lbl = 'mb-1 block text-xs font-medium text-slate-700'
 const errText = (e: unknown) => (e instanceof ApiError ? flatten(e.data).join(' · ') || 'Request failed' : 'No connection. Please try again.')
 
 type Mode = 'complete' | 'reschedule' | 'cancel'
+
+const DUE_SOON_DAYS = 2
 
 const STATE_TONE: Record<string, 'red' | 'green' | 'blue' | 'gray'> = { overdue: 'red', completed: 'green', due_today: 'blue' }
 const STATE_LABEL: Record<string, string> = { due_today: 'Due today', upcoming: 'Upcoming', overdue: 'Overdue', completed: 'Completed', cancelled: 'Cancelled' }
@@ -35,6 +37,8 @@ function FollowupCard({ f, onDone }: { f: FollowupRow; onDone: () => void }) {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const open = f.status === 'pending'
+  // Open follow-ups that are overdue, due today or due within the next DUE_SOON_DAYS days get the red date.
+  const dueSoon = open && f.due_date <= localDate(DUE_SOON_DAYS)
 
   const submit = async () => {
     if (!mode || busy) return
@@ -59,10 +63,11 @@ function FollowupCard({ f, onDone }: { f: FollowupRow; onDone: () => void }) {
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
             <Badge tone={STATE_TONE[f.state] ?? 'gray'}>{STATE_LABEL[f.state] ?? f.state}</Badge>
-            <span className="text-xs capitalize text-slate-500">{f.priority} priority</span>
+            <span className={`text-xs capitalize ${f.priority === 'high' ? 'font-semibold text-red-600' : 'text-slate-500'}`}>{f.priority} priority</span>
           </div>
         </div>
-        <p className="mt-3 flex items-center gap-2 text-sm text-slate-900"><CalendarClock size={15} className="text-primary" aria-hidden /><span>Due {fmtDue(f.due_date, f.due_time)}</span></p>
+        <p className={`mt-3 flex items-center gap-2 text-sm ${dueSoon ? 'font-semibold text-red-600' : 'text-slate-900'}`}><CalendarClock size={15} className={dueSoon ? 'text-red-600' : 'text-primary'} aria-hidden /><span>Due {fmtDue(f.due_date, f.due_time)}</span></p>
+        {f.task && <p className="mt-1 text-sm font-medium text-slate-900">{f.task}</p>}
         {f.notes && <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{f.notes}</p>}
         {f.outcome && <p className="mt-1 text-xs text-slate-500">Outcome: {f.outcome.replace(/_/g, ' ')}</p>}
 
@@ -119,7 +124,7 @@ function FollowupCard({ f, onDone }: { f: FollowupRow; onDone: () => void }) {
 function NewFollowup({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [dealer, setDealer] = useState<DealerLite | null>(null)
   const [date, setDate] = useState(localDate(1))
-  const [time, setTime] = useState('')
+  const [time, setTime] = useState(() => localTime()) // the device's current time, filled in for you; change or clear it
   const [priority, setPriority] = useState('medium')
   const [notes, setNotes] = useState('')
   const [busy, setBusy] = useState(false)
@@ -185,13 +190,14 @@ export default function Followups() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div role="tablist" aria-label="Follow-up status" className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-4 lg:max-w-2xl">
+      {/* Phone: the button on its own line, then the tabs at full width (side by side they squeezed the tabs until their labels wrapped). */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div role="tablist" aria-label="Follow-up status" className="grid grid-cols-2 gap-2 max-sm:order-2 sm:flex-1 sm:grid-cols-4 lg:max-w-2xl">
           {TABS.map(([t, label]) => {
             const n = data?.counts[t]
             return (
               <button key={t} role="tab" aria-selected={tab === t} onClick={() => { setTab(t); setPage(1) }}
-                className={`flex h-10 items-center justify-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors ${tab === t ? 'border-primary bg-primary text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>
+                className={`flex h-10 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-sm font-medium transition-colors ${tab === t ? 'border-primary bg-primary text-white' : 'bg-white text-slate-700 hover:bg-slate-50'}`}>
                 {label}
                 {n !== undefined && (
                   <span className={`rounded-full px-1.5 text-xs tabular-nums ${tab === t ? 'bg-white/20' : t === 'overdue' && n ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{n}</span>
@@ -200,7 +206,7 @@ export default function Followups() {
             )
           })}
         </div>
-        <Button onClick={() => setCreating(true)}><Plus size={16} aria-hidden />New follow-up</Button>
+        <Button className="max-sm:order-1 max-sm:w-full" onClick={() => setCreating(true)}><Plus size={16} aria-hidden />New follow-up</Button>
       </div>
       <input aria-label="Search follow-ups" placeholder="Search dealer, phone, city or notes" value={q}
         onChange={(e) => { setQ(e.target.value); setPage(1) }} className={input} />

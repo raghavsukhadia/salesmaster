@@ -95,6 +95,41 @@ def test_visit_list_filters(w):
     assert ids(c.get("/api/salesman/visits/", {"q": "Hidden"})) == set()
 
 
+def test_visit_list_from_to_dates(w):
+    c = api(w["alice"])
+    today = w["today"]
+    old_day = timezone.localtime(w["v2"].visited_at).date()  # the day of the 10-day-old visit
+    get = lambda **p: ids(c.get("/api/salesman/visits/", p))
+    both = {w["v1"].id, w["v2"].id}
+    assert get(**{"from": today.isoformat()}) == {w["v1"].id}
+    assert get(**{"to": old_day.isoformat()}) == {w["v2"].id}
+    assert get(**{"from": old_day.isoformat(), "to": today.isoformat()}) == both  # both ends inclusive
+    assert get(**{"from": old_day.isoformat(), "to": old_day.isoformat()}) == {w["v2"].id}  # a single day
+    assert get(**{"from": (old_day + timedelta(days=1)).isoformat(), "to": (today - timedelta(days=1)).isoformat()}) == set()
+    assert get(**{"from": "", "to": ""}) == both  # blank means no filter
+    assert get(**{"from": today.isoformat(), "q": "gupta"}) == set()  # combines with the other filters
+    assert get(**{"from": old_day.isoformat(), "order": "yes"}) == {w["v1"].id}
+
+
+def test_visit_list_bad_dates_rejected(w):
+    c = api(w["alice"])
+    today = w["today"]
+    for params in ({"from": "yesterday"}, {"to": "31/12/2026"}, {"from": "2026-13-01"}):
+        r = c.get("/api/salesman/visits/", params)
+        assert r.status_code == 400 and set(r.data) <= {"from", "to"}
+    r = c.get("/api/salesman/visits/", {"from": today.isoformat(), "to": (today - timedelta(days=1)).isoformat()})
+    assert r.status_code == 400 and "from" in r.data
+
+
+def test_visit_detail_says_whether_dealer_is_editable(w):
+    mine = api(w["alice"]).get(f"/api/salesman/visits/{w['v1'].id}/").data["dealer"]
+    assert mine["can_edit"] is True and mine["address"] == "" and mine["pincode"] == ""
+    # A salesman who only holds an access grant can see the visit's dealer but not edit it.
+    DealerAccessGrant.objects.create(salesman=w["b"], dealer=w["d1"])
+    borrowed = Visit.objects.create(salesman=w["b"], dealer=w["d1"], visited_at=timezone.now())
+    assert api(w["bob"]).get(f"/api/salesman/visits/{borrowed.id}/").data["dealer"]["can_edit"] is False
+
+
 def test_summary_not_inflated_by_multiple_order_lines(w):
     for n in range(3):
         VisitOrderItem.objects.create(visit=w["v1"], product_name=f"Extra {n}", quantity=1)

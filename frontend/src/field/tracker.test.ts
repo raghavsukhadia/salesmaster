@@ -35,6 +35,10 @@ function rig(opts: { onDuty?: boolean } = {}) {
   const timers: { fn: () => void; ms: number; id: number; live: boolean }[] = []
   const calls: Call[] = []
   const behaviour = {
+    sessionGate: null as Promise<void> | null,
+    startGate: null as Promise<void> | null,
+    sessionFailures: [] as (number | null)[],
+    startFailures: 0,
     upload: [] as (null | number)[], /* queued failures: status code, or null = network error */
     endFails: 0,
     serverStatus: 'live' as string, // what the server says about the salesman after an upload
@@ -49,8 +53,16 @@ function rig(opts: { onDuty?: boolean } = {}) {
       const method = init.method ?? 'GET'
       calls.push({ path, method, body: init.body })
       if (!online) throw new HttpError(null)
-      if (path === '/api/field/session/') return { ...duty(onDuty), tracking: { status: onDuty ? behaviour.serverStatus : 'off_duty', is_live: onDuty && behaviour.serverStatus === 'live', age_s: null } } as T
-      if (path === '/api/field/session/start/') { onDuty = true; return duty(true) as T }
+      if (path === '/api/field/session/') {
+        if (behaviour.sessionGate) await behaviour.sessionGate
+        if (behaviour.sessionFailures.length) throw new HttpError(behaviour.sessionFailures.shift()!)
+        return { ...duty(onDuty), tracking: { status: onDuty ? behaviour.serverStatus : 'off_duty', is_live: onDuty && behaviour.serverStatus === 'live', age_s: null } } as T
+      }
+      if (path === '/api/field/session/start/') {
+        if (behaviour.startGate) await behaviour.startGate
+        if (behaviour.startFailures > 0) { behaviour.startFailures--; throw new HttpError(500) }
+        onDuty = true; return duty(true) as T
+      }
       if (path === '/api/field/session/end/') {
         if (behaviour.endFails > 0) { behaviour.endFails--; throw new HttpError(null) }
         onDuty = false; return duty(false) as T
@@ -89,6 +101,7 @@ function rig(opts: { onDuty?: boolean } = {}) {
     emitLate: (p: GeoPos) => { clock = p.timestamp; lastHandler!.ok(p) },
     emitRaw: (p: GeoPos) => lastHandler!.ok(p), // delivers the reading without touching the clock
     sampleRequests,
+    captureHandler: () => lastHandler,
     advance: (ms: number) => { clock += ms },
     runTimers: async (minMs = 0, maxMs = Infinity) => { for (const t of timers.filter((x) => x.live && x.ms >= minMs && x.ms <= maxMs)) { t.live = false; t.fn() } await tick() },
     fix, watching: () => watcher !== null, watchCount: () => watches, clearCount: () => clears,
@@ -105,6 +118,132 @@ test('nothing is watched or recorded while off duty', async () => {
   assert.equal(r.watching(), false)
   assert.equal(r.tracker.getState().duty?.on_duty, false)
   assert.equal(posts(r.calls, '/api/field/locations/').length, 0)
+})
+
+test('opening the salesman app automatically starts duty and GPS without a separate start action', async () => {
+  const r = rig()
+  await r.tracker.open(7)
+  assert.equal(r.tracker.getState().duty?.on_duty, true)
+  assert.equal(r.watching(), true)
+  assert.equal(posts(r.calls, '/api/field/session/start/').length, 1)
+  r.emit(r.fix(1))
+  await r.tick()
+  assert.equal(r.uploaded.length, 1)
+})
+
+test('concurrent app mounts and page returns reuse one duty session and one GPS watch', async () => {
+  const r = rig()
+  await Promise.all([r.tracker.open(7), r.tracker.open(7), r.tracker.open(7)])
+  await r.tracker.open(7)
+  assert.equal(posts(r.calls, '/api/field/session/start/').length, 1)
+  assert.equal(r.watchCount(), 1)
+})
+
+test('opening the app resumes an existing duty session without creating another one', async () => {
+  const r = rig({ onDuty: true })
+  await r.tracker.open(7)
+  assert.equal(r.watching(), true)
+  assert.equal(posts(r.calls, '/api/field/session/start/').length, 0)
+})
+
+test('an offline app opening starts duty when the connection returns', async () => {
+  const r = rig()
+  r.setOnline(false)
+  await r.tracker.open(7)
+  assert.equal(r.watching(), false)
+  r.setOnline(true)
+  await r.tracker.open(7)
+  assert.equal(r.tracker.getState().duty?.on_duty, true)
+  assert.equal(r.watching(), true)
+})
+
+test('a failed automatic start stays visible and succeeds on retry', async () => {
+  const r = rig()
+  r.behaviour.startFailures = 1
+  await r.tracker.open(7)
+  assert.match(r.tracker.getState().error ?? '', /Could not start duty/)
+  assert.equal(r.watching(), false)
+  await r.tracker.open(7)
+  assert.equal(r.tracker.getState().error, null)
+  assert.equal(r.watching(), true)
+})
+
+test('a late session response after leaving the app cannot start duty or GPS', { timeout: 2000 }, async () => {
+  const r = rig()
+  let release!: () => void
+  r.behaviour.sessionGate = new Promise<void>((resolve) => { release = resolve })
+  const opening = r.tracker.open(7)
+  r.tracker.shutdown()
+  release()
+  await opening
+  assert.equal(posts(r.calls, '/api/field/session/start/').length, 0)
+  assert.equal(r.watching(), false)
+  assert.equal(r.tracker.getState().duty, null)
+})
+
+test('a late automatic-start response cannot resume GPS after sign-out', { timeout: 2000 }, async () => {
+  const r = rig()
+  let release!: () => void
+  r.behaviour.startGate = new Promise<void>((resolve) => { release = resolve })
+  const opening = r.tracker.open(7)
+  await r.tick()
+  assert.equal(posts(r.calls, '/api/field/session/start/').length, 1)
+  r.tracker.shutdown()
+  release()
+  await opening
+  assert.equal(r.watching(), false)
+  assert.equal(r.tracker.getState().duty, null)
+})
+
+test('a GPS callback left over from the previous login cannot record under a new user', async () => {
+  const r = rig()
+  await r.tracker.open(7)
+  const previous = r.captureHandler()!
+  r.tracker.shutdown()
+  await r.tracker.open(8)
+  previous.ok(r.fix(1))
+  await r.tick()
+  assert.equal(r.uploaded.length, 0)
+  assert.equal(r.tracker.getState().position, null)
+})
+
+test('sign-out during automatic startup closes the session without beginning location recording', { timeout: 2000 }, async () => {
+  const r = rig()
+  let release!: () => void
+  r.behaviour.startGate = new Promise<void>((resolve) => { release = resolve })
+  const opening = r.tracker.open(7)
+  await r.tick()
+  const ending = r.tracker.end()
+  release()
+  await Promise.all([opening, ending])
+  assert.equal(r.tracker.getState().duty?.on_duty, false)
+  assert.equal(r.watchCount(), 0)
+  assert.equal(posts(r.calls, '/api/field/session/end/').length, 1)
+})
+
+test('automatic duty respects denied location permission and can restart GPS after permission is changed', async () => {
+  const r = rig()
+  await r.tracker.open(7)
+  r.emitError(1)
+  assert.equal(r.tracker.getState().gps, 'denied')
+  assert.equal(r.uploaded.length, 0)
+  r.tracker.retryLocation()
+  assert.equal(r.watchCount(), 2)
+  assert.equal(r.clearCount(), 1)
+  r.emit(r.fix(1))
+  await r.tick()
+  assert.equal(r.uploaded.length, 1)
+})
+
+test('app reopening finishes an old pending duty end before starting a new session', async () => {
+  const r = rig({ onDuty: true })
+  r.store.setItem('sm_field_pending_end:7', '1')
+  await r.tracker.open(7)
+  const order = r.calls.filter((call) => call.method === 'POST').map((call) => call.path)
+  assert.ok(order.indexOf('/api/field/session/end/') < order.indexOf('/api/field/session/start/'))
+  assert.equal(r.tracker.getState().pendingEnd, false)
+  assert.equal(r.tracker.getState().duty?.on_duty, true)
+  assert.equal(r.watchCount(), 1)
 })
 
 test('going on duty starts GPS; fixes are queued and uploaded with the device send time', async () => {

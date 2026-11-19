@@ -61,7 +61,7 @@ export default function OwnershipCleanup() {
         {loading && !data && <p className="text-sm text-slate-500">Loading…</p>}
         {data && data.groups.length === 0 && <p className="py-6 text-center text-sm text-slate-500">All dealers have an owner. Nothing to clean up.</p>}
         {data && data.groups.length > 0 && (
-          <Table head={['State', 'City', 'Dealers', 'Action'].map((label) => ({ label }))}>
+          <Table stack head={['State', 'City', 'Dealers', 'Action'].map((label) => ({ label }))}>
             {data.groups.map((g) => (
               <tr key={`${g.state}|${g.city}`} className="border-t">
                 <td className="px-4 py-3">{g.state || '—'}</td>

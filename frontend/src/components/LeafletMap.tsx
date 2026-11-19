@@ -25,6 +25,7 @@ interface Props {
   focusMarkerId?: string // focus the selected salesman while retaining every dealer pin
   onMarkerClick?: (m: MapMarker) => void
   onMapClick?: (lat: number, lng: number) => void
+  zoomOnSalesmanClick?: boolean // clicking a salesman icon flies the map to street level at that position
   className?: string
   label: string
 }
@@ -47,12 +48,10 @@ function iconFor(m: MapMarker): L.DivIcon {
   let size = 22
   if (m.kind === 'salesman') {
     const st = m.status ?? 'live'
-    const color = COLORS[st]
-    // Live = solid. Stale/lost = visibly different (lighter, dashed ring) so an old position is never mistaken for a current one.
-    const style = st === 'live'
-      ? `background:${color};border:3px solid #fff;`
-      : `background:#fff;border:3px dashed ${color};color:${color};`
-    html = `<div style="width:30px;height:30px;border-radius:50%;${style}${ring}display:flex;align-items:center;justify-content:center;color:${st === 'live' ? '#fff' : color}"><svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="6" r="3" fill="currentColor"/><path d="M4 18v-2a6 6 0 0 1 12 0v2Z" fill="currentColor"/></svg></div>`
+    // Always the solid blue salesman icon (as in the legend). A position that is not live gets a small corner dot
+    // in its status colour, so an old position is still told apart from a current one.
+    const dot = st === 'live' ? '' : `<span style="position:absolute;right:-3px;top:-3px;width:11px;height:11px;border-radius:50%;background:${COLORS[st]};border:2px solid #fff"></span>`
+    html = `<div style="position:relative;width:30px;height:30px;border-radius:50%;background:${COLORS.live};border:3px solid #fff;${ring}display:flex;align-items:center;justify-content:center;color:#fff"><svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="6" r="3" fill="currentColor"/><path d="M4 18v-2a6 6 0 0 1 12 0v2Z" fill="currentColor"/></svg>${dot}</div>`
     size = 30
   } else if (m.kind === 'origin') {
     html = `<div style="width:20px;height:20px;border-radius:50%;background:rgba(255,107,26,.25);border:3px solid #ff6b1a;${ring}"></div>`
@@ -65,7 +64,9 @@ function iconFor(m: MapMarker): L.DivIcon {
   return L.divIcon({ className: '', html, iconSize: [size, size], iconAnchor: [size / 2, size / 2] })
 }
 
-export default function LeafletMap({ markers, circles = [], line, fitKey, focusMarkerId, onMarkerClick, onMapClick, className = 'h-[480px]', label }: Props) {
+const INDIA = L.latLngBounds([6.5, 68], [35.7, 97.4])
+
+export default function LeafletMap({ markers, circles = [], line, fitKey, focusMarkerId, onMarkerClick, onMapClick, zoomOnSalesmanClick, className = 'h-[480px]', label }: Props) {
   const el = useRef<HTMLDivElement>(null)
   const map = useRef<L.Map | null>(null)
   const layer = useRef<L.LayerGroup | null>(null)
@@ -103,16 +104,21 @@ export default function LeafletMap({ markers, circles = [], line, fitKey, focusM
       if (m.detail) { tip.appendChild(document.createElement('br')); tip.appendChild(document.createTextNode(m.detail)) }
       mk.bindTooltip(tip, { direction: 'top', offset: [0, -10] })
       if (m.kind === 'dealer' || m.kind === 'target') mk.bindPopup(tip.cloneNode(true) as HTMLElement, { autoPan: false })
-      if (onMarkerClick) mk.on('click', (e) => { L.DomEvent.stopPropagation(e); onMarkerClick(m) })
+      mk.on('click', (e) => {
+        L.DomEvent.stopPropagation(e)
+        if (m.kind === 'salesman' && zoomOnSalesmanClick) map.current?.flyTo([m.lat, m.lng], 16, { duration: 1.2 }) // jump to the exact position
+        onMarkerClick?.(m)
+      })
       mk.addTo(g)
       if (m.selected && (m.kind === 'dealer' || m.kind === 'target')) mk.openPopup()
     }
-  }, [markers, circles, line, onMarkerClick])
+  }, [markers, circles, line, onMarkerClick, zoomOnSalesmanClick])
 
   useEffect(() => {
     const m = map.current
     if (!m || fitKey === undefined) return
     const { markers: ms, circles: cs, line: ln } = latest.current
+    if (String(fitKey).startsWith('india')) { m.fitBounds(INDIA, { padding: [10, 10] }); return } // the whole country, whatever the screen width
     const focus = focusMarkerId ? ms.find((marker) => marker.id === focusMarkerId) : undefined
     if (focus) { m.setView([focus.lat, focus.lng], 15); return }
     const b = L.latLngBounds([])

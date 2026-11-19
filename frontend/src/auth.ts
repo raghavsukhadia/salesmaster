@@ -35,6 +35,15 @@ export async function login(username: string, password: string): Promise<void> {
   localStorage.setItem(KEY, JSON.stringify(await res.json()))
 }
 
+/**
+ * Changes the signed-in user's own password. A password change signs an account out everywhere (tokens carry a hash of the
+ * password), so the server answers with a fresh token pair for this session, and it replaces the old one here.
+ */
+export async function changePassword(current: string, next: string): Promise<void> {
+  const tokens = await api<{ access: string; refresh: string }>('/api/me/password/', { method: 'POST', body: { current_password: current, new_password: next } })
+  localStorage.setItem(KEY, JSON.stringify(tokens))
+}
+
 async function refresh(): Promise<boolean> {
   const tokens = JSON.parse(localStorage.getItem(KEY) ?? 'null')
   if (!tokens?.refresh) return false

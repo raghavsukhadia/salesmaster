@@ -74,6 +74,12 @@ def _create_dealer(salesman, data) -> Dealer:
         **location,
     )
     DealerOwnershipHistory.objects.create(dealer=dealer, salesman=salesman, reason="Created via visit")
+    if has_fix:  # the shop-location history management sees starts with the salesman's own capture
+        from apps.field.models import FieldAuditLog
+        from apps.field.services import audit
+        audit(salesman.user, FieldAuditLog.Action.DEALER_LOCATION_SET, salesman=salesman, dealer_id=dealer.id,
+              via="new_dealer_form", after={"latitude": dealer.latitude, "longitude": dealer.longitude,
+                                            "accuracy_m": dealer.location_accuracy_m, "verified": False, "source": dealer.location_source})
     contact_name = data.get("contact_name", "").strip()
     if contact_name:
         DealerContact.objects.create(
@@ -163,6 +169,8 @@ def record_visit(user, data) -> tuple[Visit, bool]:
                     due_date=followup["due_date"],
                     due_time=followup.get("due_time"),
                     priority=followup.get("priority", Followup.Priority.MEDIUM),
+                    action=followup.get("action", ""),
+                    action_text=followup.get("action_text", ""),
                     notes=followup.get("notes", ""),
                 )
                 dealer.next_followup_at = followup["due_date"]

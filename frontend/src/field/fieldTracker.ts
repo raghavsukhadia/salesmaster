@@ -52,7 +52,7 @@ export interface TrackerState {
   online: boolean
   lastUploadAt: number | null
   uploadProblem: UploadProblem
-  pendingEnd: boolean // the salesman pressed End duty; recording has stopped, the server call is still to land
+  pendingEnd: boolean // duty is closing (including sign-out); recording has stopped, the server call is still to land
   busy: boolean
   // The server's own verdict on this salesman's position. The screen must never claim "shared" on the
   // phone's optimism alone: fixes can be rejected (wrong clock, poor accuracy) while uploads still return 200.
@@ -81,6 +81,10 @@ export class FieldTracker {
   private heartbeat: unknown = null
   private sampler: unknown = null
   private lastCallbackAt = 0
+  private generation = 0
+  private opening: Promise<void> | null = null
+  private ending: Promise<void> | null = null
+  private closing = false
 
   private d: TrackerDeps
 
@@ -113,12 +117,32 @@ export class FieldTracker {
       try { pending = this.d.store.getItem(this.endKey()) === '1' } catch { /* storage unavailable */ }
       this.set({ queued: this.queue.length, pendingEnd: pending, loaded: false, error: null })
     }
+    const generation = this.generation
     await this.refresh()
+    if (generation !== this.generation) return
     if (this.state.pendingEnd) await this.tryEnd()
+  }
+
+  /** Opening the signed-in salesman app starts duty or resumes the existing session. */
+  open(userId: number): Promise<void> {
+    if (this.opening && this.userId === userId) return this.opening
+    const initialised = this.init(userId)
+    const generation = this.generation
+    const job = initialised.then(async () => {
+      if (generation !== this.generation || this.userId !== userId || this.closing) return
+      if (!this.state.error && this.state.duty && !this.state.duty.on_duty && !this.state.pendingEnd) await this.start()
+    })
+    this.opening = job
+    const clear = () => { if (this.opening === job) this.opening = null }
+    void job.then(clear, clear)
+    return job
   }
 
   /** Stop recording and timers (sign-out, unmount of the whole app). The persisted queue is kept. */
   shutdown() {
+    this.generation++
+    this.opening = this.ending = null
+    this.closing = false
     this.stopWatch()
     this.d.clearTimer(this.retry); this.d.clearTimer(this.heartbeat); this.d.clearTimer(this.sampler)
     this.retry = this.heartbeat = this.sampler = null
@@ -138,10 +162,13 @@ export class FieldTracker {
 
   async refresh() {
     if (this.userId === null) return
+    const generation = this.generation
     try {
       const duty = await this.d.api<DutyResponse>('/api/field/session/')
+      if (generation !== this.generation) return
       this.set({ duty, loaded: true, error: null, serverStatus: duty.on_duty ? duty.tracking.status : null })
     } catch (e) {
+      if (generation !== this.generation) return
       this.set({ loaded: true, error: statusOf(e) === 403 ? 'This account has no active salesman profile.' : 'Could not reach the server.' })
     }
     this.syncWatch()
@@ -152,42 +179,64 @@ export class FieldTracker {
   // ---- duty ----
   async start() {
     const duty = this.state.duty
-    if (!duty || this.state.busy || this.state.pendingEnd) return
+    if (this.userId === null || !duty || duty.on_duty || this.state.busy || this.state.pendingEnd) return
+    const generation = this.generation
+    this.closing = false
     this.set({ busy: true, error: null })
     try {
       const next = await this.d.api<DutyResponse>('/api/field/session/start/', {
         method: 'POST', body: { consent: true, consent_version: duty.policy.consent_version },
       })
+      if (generation !== this.generation) return
       this.last = null
       this.set({ duty: next, busy: false, gps: this.d.geo ? 'waiting' : 'unsupported' })
       this.syncWatch()
       this.scheduleHeartbeat()
     } catch (e) {
-      this.set({ busy: false, error: statusOf(e) === 400 ? 'The tracking notice changed. Please read and accept it again.' : 'Could not start duty. Check your connection and try again.' })
+      if (generation !== this.generation) return
+      const error = statusOf(e) === 400 ? 'The location notice changed. Please retry to load the latest notice.' : 'Could not start duty. Check your connection and retry.'
       await this.refresh()
+      if (generation === this.generation) this.set({ busy: false, error })
     }
   }
 
   /** Recording stops immediately; the server is told as soon as the connection allows. */
   async end() {
-    if (!this.state.duty?.on_duty || this.state.pendingEnd) return
+    if (this.userId === null || (!this.state.duty?.on_duty && !this.opening && !this.state.pendingEnd)) return
+    const generation = this.generation
+    this.closing = true
     try { this.d.store.setItem(this.endKey(), '1') } catch { /* the in-memory flag still holds for this session */ }
     this.set({ pendingEnd: true })
     this.syncWatch()
-    await this.tryEnd()
+    // Sign-out can happen while automatic startup is still in flight. Finish that request before closing it.
+    await this.opening
+    if (generation === this.generation && this.state.pendingEnd) await this.tryEnd()
   }
 
-  private async tryEnd() {
+  private tryEnd(): Promise<void> {
+    if (this.ending) return this.ending
+    const job = this.finishEnd()
+    this.ending = job
+    const clear = () => { if (this.ending === job) this.ending = null }
+    void job.then(clear, clear)
+    return job
+  }
+
+  private async finishEnd() {
     if (this.userId === null) return
+    const generation = this.generation
     this.set({ busy: true })
     await this.flush() // anything captured before the button press is uploaded while the session is still open
+    if (generation !== this.generation) return
     try {
       const duty = await this.d.api<DutyResponse>('/api/field/session/end/', { method: 'POST' })
+      if (generation !== this.generation) return
       try { this.d.store.removeItem(this.endKey()) } catch { /* ignore */ }
       this.set({ duty, pendingEnd: false, busy: false, gps: 'idle', position: null, error: null, serverStatus: null, lastRejected: [] })
       this.syncWatch()
       if (this.queue.length) void this.flush() // late stragglers still sync inside the server's grace window
     } catch {
+      if (generation !== this.generation) return
       this.failures++
       this.set({ busy: false })
       this.scheduleRetry(() => this.tryEnd())
@@ -195,13 +244,22 @@ export class FieldTracker {
   }
 
   // ---- GPS ----
-  private shouldWatch = () => !!this.state.duty?.on_duty && !this.state.pendingEnd && !!this.d.geo
+  private shouldWatch = () => this.userId !== null && !!this.state.duty?.on_duty && !this.state.pendingEnd && !!this.d.geo
+
+  retryLocation() {
+    this.stopWatch()
+    this.syncWatch()
+  }
 
   private syncWatch() {
     if (this.shouldWatch() && this.watchId === null) {
       this.set({ gps: this.state.gps === 'ok' ? 'ok' : 'waiting' })
       this.lastCallbackAt = this.d.now()
-      this.watchId = this.d.geo!.watchPosition(this.onPosition, this.onGeoError, WATCH_OPTIONS)
+      const generation = this.generation
+      this.watchId = this.d.geo!.watchPosition(
+        (position) => { if (generation === this.generation) this.onPosition(position) },
+        (error) => { if (generation === this.generation) this.onGeoError(error) }, WATCH_OPTIONS,
+      )
       this.scheduleSampler()
     } else if (!this.shouldWatch() && this.watchId !== null) {
       this.stopWatch()
@@ -226,7 +284,13 @@ export class FieldTracker {
     this.sampler = this.d.setTimer(() => {
       this.sampler = null
       if (!this.shouldWatch()) return
-      if (this.d.now() - this.lastCallbackAt >= ms - 1000) this.d.geo!.getCurrentPosition(this.onPosition, this.onGeoError, SAMPLE_OPTIONS)
+      if (this.d.now() - this.lastCallbackAt >= ms - 1000) {
+        const generation = this.generation
+        this.d.geo!.getCurrentPosition(
+          (position) => { if (generation === this.generation) this.onPosition(position) },
+          (error) => { if (generation === this.generation) this.onGeoError(error) }, SAMPLE_OPTIONS,
+        )
+      }
       this.scheduleSampler()
     }, ms)
   }
@@ -264,6 +328,7 @@ export class FieldTracker {
     if (this.flushing) { this.flushAgain = true; return }
     if (!this.d.isOnline()) { this.set({ online: false, uploadProblem: this.queue.length ? 'offline' : null }); return }
     this.flushing = true
+    const generation = this.generation
     try {
       do {
         this.flushAgain = false
@@ -275,6 +340,7 @@ export class FieldTracker {
               method: 'POST', body: { sent_at: new Date(this.d.now()).toISOString(), points: batch },
             })
           } catch (e) {
+            if (generation !== this.generation) return
             const status = statusOf(e)
             if (status === 400) { // the batch itself is malformed and can never succeed: discard, don't loop
               this.queue = removeSent(this.queue, batch)
@@ -288,6 +354,7 @@ export class FieldTracker {
             this.scheduleRetry(() => this.flush())
             return
           }
+          if (generation !== this.generation) return
           this.failures = 0
           this.queue = removeSent(this.queue, batch) // 200 = every point in the batch has been judged
           this.persist()

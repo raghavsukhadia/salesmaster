@@ -8,7 +8,7 @@ import GlobalSearch from './GlobalSearch'
 import { RANGE_ROUTES } from './nav'
 import { usePopover } from './usePopover'
 import { tracker } from '../field/useTracker'
-import { Badge, useConfirm } from './ui'
+import { Badge } from './ui'
 
 function Breadcrumbs() {
   const { pathname } = useLocation()
@@ -38,14 +38,13 @@ const initials = (me: Me) => {
   return (words.length > 1 ? words[0][0] + words[1][0] : words[0].slice(0, 2)).toUpperCase()
 }
 
-/** Sign out, asking first if the salesman is still on duty. Salesmen land on their own sign-in page, everyone else on the main one. */
+/** Sign-out ends a salesman's duty before clearing their login. */
 function useSignOut(me: Me) {
   const nav = useNavigate()
-  const confirm = useConfirm()
   return async () => {
-    if (tracker.getState().duty?.on_duty && !(await confirm({ title: 'You are still on duty', message: 'Signing out stops location recording on this phone. Your duty session stays open until you press End duty.', confirmLabel: 'Sign out anyway', danger: true }))) return
+    if (me.role === 'salesman') await tracker.end()
     logout()
-    nav(me.role === 'salesman' ? '/salesman-login' : '/login', { replace: true })
+    nav('/login', { replace: true })
   }
 }
 
@@ -96,9 +95,15 @@ export default function TopBar({ me, onToggle }: { me: Me; onToggle: () => void 
   const management = me.role !== 'salesman'
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-white/90 px-4 backdrop-blur sm:px-6 lg:px-8 print:hidden">
+      {/* Salesmen get the bottom bar on phones, so the drawer button only exists from desktop width (where it collapses the sidebar). */}
       <button type="button" onClick={onToggle} aria-label="Toggle navigation" aria-controls="primary-nav"
-        className="grid size-10 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-slate-100"><PanelLeft size={20} aria-hidden /></button>
-      <Breadcrumbs />
+        className={`${management ? 'grid' : 'hidden lg:grid'} size-10 shrink-0 place-items-center rounded-lg text-slate-600 hover:bg-slate-100`}><PanelLeft size={20} aria-hidden /></button>
+      {/* Phone/tablet: the sidebar is hidden, so the brand sits top left (from desktop width the sidebar shows it). Taps go home. */}
+      <Link to={management ? '/dashboard' : '/record-visit'} aria-label={`Sales Master: ${management ? 'Dashboard' : 'Record Visit'}`} className="shrink-0 rounded-md lg:hidden">
+        <img src="/logo-trimmed.png" alt="Sales Master" width={638} height={439} className="h-10 w-auto" />
+      </Link>
+      {/* Where the logo is shown (below desktop width) the page title is left out: the page has its own heading. */}
+      <div className="hidden min-w-0 lg:block"><Breadcrumbs /></div>
       <div className="ml-auto flex items-center gap-1 sm:gap-2">
         {management && <GlobalSearch />}
         {management && RANGE_ROUTES.includes(pathname) && <DateRangeMenu />}

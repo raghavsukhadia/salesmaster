@@ -78,7 +78,7 @@ class ManagementVisitDetailView(APIView):
             "followups": [{
                 "id": f.id, "due_date": f.due_date, "due_time": f.due_time.strftime("%H:%M") if f.due_time else None,
                 "priority": f.priority, "status": f.status, "outcome": f.outcome,
-                "notes": f.notes, "state": followup_state(f, today),
+                "action": f.action, "task": f.task, "notes": f.notes, "state": followup_state(f, today),
             } for f in v.followups.all()],
         })
 
@@ -111,7 +111,7 @@ class ManagementFollowupDetailView(APIView):
         return Response({
             "id": f.id, "due_date": f.due_date, "due_time": f.due_time.strftime("%H:%M") if f.due_time else None,
             "created_at": f.created_at, "status": f.status, "state": state,
-            "priority": f.priority, "outcome": f.outcome, "notes": f.notes,
+            "priority": f.priority, "outcome": f.outcome, "action": f.action, "task": f.task, "notes": f.notes,
             "days_overdue": (today - f.due_date).days if state == "overdue" else 0,
             "dealer": dealer_block(d, current_owner(d)),
             "salesman": salesman_block(f.salesman),

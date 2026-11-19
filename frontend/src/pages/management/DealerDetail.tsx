@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useOutletContext, useParams } from 'react-router-dom'
 import { api, ApiError, type Me } from '../../auth'
 import { Badge, fmtDate, fmtTime, flatten, PageHeader, Pager, Pills, StateSelect, StatStrip, Table, useApi } from '../../components/ui'
+import LeafletMap, { type MapMarker } from '../../components/LeafletMap'
 
 interface Profile {
   id: number; name: string; shop_name: string; phone: string; whatsapp: string; address: string; city: string; state: string
@@ -45,7 +46,7 @@ function Rows<T>({ path, head, row }: { path: string; head: string[]; row: (r: T
   const { data, loading, error } = useApi<Page<T>>(`${path}?page=${page}`)
   return (
     <>
-      <Table head={head.map((label) => ({ label }))} loading={loading} error={error} empty={data?.results.length === 0}>{data?.results.map((r, i) => row(r, i))}</Table>
+      <Table stack head={head.map((label) => ({ label }))} loading={loading} error={error} empty={data?.results.length === 0}>{data?.results.map((r, i) => row(r, i))}</Table>
       <Pager page={page} count={data?.count ?? 0} onChange={setPage} />
     </>
   )
@@ -90,7 +91,7 @@ function Profile({ d, onSaved }: { d: Detail; onSaved: () => void }) {
     <Card title="Profile & business information" action={action}>
       {err && <p role="alert" className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{err}</p>}
       {editing ? (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {FIELDS.map(([k, label]) => (
             <label key={k} className="flex flex-col gap-1 text-xs text-slate-600">{label}
               {k === 'state'
@@ -105,9 +106,10 @@ function Profile({ d, onSaved }: { d: Detail; onSaved: () => void }) {
           </label>
         </div>
       ) : (
-        <dl className="grid grid-cols-3 gap-x-6 gap-y-3 text-sm">
+        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3 sm:gap-x-6">
           {[...FIELDS.map(([k, l]) => [l, p[k]] as const), ['Distributor', p.distributor], ['Last visit', fmtDate(p.last_visit_at)], ['Next follow-up', fmtDate(p.next_followup)], ['Added', fmtDate(p.created_at)]].map(([l, v]) => (
-            <div key={String(l)}><dt className="text-xs text-slate-500">{l}</dt><dd className="font-medium">{String(v || '—')}</dd></div>
+            // Names and addresses are long: on a phone they get the whole row instead of half of it.
+            <div key={String(l)} className={`min-w-0 ${l === 'Dealer name' || l === 'Shop name' || l === 'Address' ? 'col-span-2 sm:col-span-1' : ''}`}><dt className="text-xs text-slate-500">{l}</dt><dd className="break-words font-medium">{String(v || '—')}</dd></div>
           ))}
         </dl>
       )}
@@ -133,7 +135,7 @@ function Ownership({ d, onChanged }: { d: Detail; onChanged: () => void }) {
     <Card title="Ownership">
       <p className="mb-3 text-sm">Current owner: {d.owner ? <><b>{d.owner.name}</b> <span className="text-slate-500">since {fmtDate(d.owner.since)}</span></> : <span className="text-amber-800">Unassigned</span>}</p>
       {d.permissions.can_transfer && (
-        <div className="mb-4 flex items-end gap-3">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
           <label className="flex flex-col gap-1 text-xs text-slate-600">{d.owner ? 'Transfer to' : 'Assign to'}
             <select value={sid} onChange={(e) => setSid(e.target.value)} className="rounded-lg border bg-white px-3 py-2.5 text-sm text-slate-900">
               <option value="">Select salesman</option>{options.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -150,7 +152,7 @@ function Ownership({ d, onChanged }: { d: Detail; onChanged: () => void }) {
       {d.ownership_history?.length ? (
         <ul className="divide-y text-sm">
           {d.ownership_history.map((o) => (
-            <li key={o.id} className="flex justify-between py-2">
+            <li key={o.id} className="flex flex-col gap-0.5 py-2 sm:flex-row sm:justify-between sm:gap-4">
               <span><b>{o.salesman}</b> {o.ended_at ? '' : <Badge tone="green">Current</Badge>}{o.reason && <span className="text-slate-500"> — {o.reason}</span>}</span>
               <span className="text-slate-500">{fmtDate(o.started_at)} → {o.ended_at ? fmtDate(o.ended_at) : 'now'}{o.changed_by && ` · by ${o.changed_by}`}</span>
             </li>
@@ -177,9 +179,9 @@ function Access({ d, onChanged }: { d: Detail; onChanged: () => void }) {
 
   return (
     <Card title="Access grants">
-      <p className="mb-3 text-sm text-slate-500">Salesmen who can see this dealer in addition to its owner.</p>
+      <p className="mb-3 text-sm text-slate-500">Salesman who can see this dealer in addition to its owner.</p>
       {admin && (
-        <div className="mb-4 flex items-end gap-3">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end">
           <label className="flex flex-col gap-1 text-xs text-slate-600">Grant access to
             <select value={sid} onChange={(e) => setSid(e.target.value)} className="rounded-lg border bg-white px-3 py-2.5 text-sm text-slate-900">
               <option value="">Select salesman</option>{options.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -200,6 +202,59 @@ function Access({ d, onChanged }: { d: Detail; onChanged: () => void }) {
           ))}
         </ul>
       ) : <p className="text-sm text-slate-500">No extra access granted.</p>}
+    </Card>
+  )
+}
+
+interface LocEvent { id: number; at: string; event: 'captured' | 'updated' | 'verified'; by: string; by_role: string; latitude: number | null; longitude: number | null; accuracy_m: number | null; source: string }
+interface Loc { latitude: number | null; longitude: number | null; accuracy_m: number | null; source: string; verified: boolean; verified_at: string | null; verified_by: string | null; history: LocEvent[] }
+const EVENT_LABEL: Record<LocEvent['event'], [string, 'blue' | 'amber' | 'green']> = {
+  captured: ['Captured by salesman', 'blue'], updated: ['Location changed', 'amber'], verified: ['Verified', 'green'],
+}
+const mapsUrl = (lat: number, lng: number) => `https://www.google.com/maps?q=${lat},${lng}`
+
+/** Management only: where the shop is, and the history of who captured, changed or verified it and when. */
+function ShopLocation({ id }: { id: string }) {
+  const { data, loading, error } = useApi<Loc>(`/api/management/dealers/${id}/location/`)
+  const has = data?.latitude != null && data?.longitude != null
+  const markers: MapMarker[] = has ? [{ id: 'd', kind: 'dealer', lat: data.latitude!, lng: data.longitude!, label: 'Shop location', verified: data.verified, selected: false }] : []
+  return (
+    <Card title="Shop location" action={data && (has ? <Badge tone={data.verified ? 'green' : 'amber'}>{data.verified ? 'Verified' : 'Not verified'}</Badge> : <Badge tone="red">Missing</Badge>)}>
+      {loading && !data && <p className="text-sm text-slate-500">Loading…</p>}
+      {error && <p role="alert" className="text-sm text-red-700">Could not load the shop location.</p>}
+      {data && !has && <p className="text-sm text-slate-500">No shop location captured yet. <Link to="/dealer-locations" className="text-primary hover:underline">Set it in Dealer Locations</Link>.</p>}
+      {data && has && (
+        <>
+          <p className="mb-3 text-sm">
+            <span className="font-medium">{data.latitude!.toFixed(5)}, {data.longitude!.toFixed(5)}</span>
+            {data.accuracy_m != null && <span className="text-slate-500"> · accurate to about {Math.round(data.accuracy_m)} m</span>}
+            {' · '}<a href={mapsUrl(data.latitude!, data.longitude!)} target="_blank" rel="noreferrer" className="text-primary hover:underline">Open in Google Maps ↗</a>
+          </p>
+          <LeafletMap className="h-56" label="Shop location map" markers={markers} fitKey={`loc-${data.latitude},${data.longitude}`} />
+        </>
+      )}
+      {data && (
+        <>
+          <h3 className="mb-2 mt-4 text-xs font-medium uppercase text-slate-500">Location history</h3>
+          {data.history.length ? (
+            <ul className="divide-y text-sm">
+              {data.history.map((h) => (
+                <li key={h.id} className="flex flex-col gap-1 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Badge tone={EVENT_LABEL[h.event][1]}>{EVENT_LABEL[h.event][0]}</Badge>
+                    <span>by <b>{h.by}</b>{h.by_role && <span className="text-slate-500"> ({h.by_role})</span>}</span>
+                  </span>
+                  <span className="text-slate-600">
+                    {fmtDate(h.at, true)} {fmtTime(h.at)}
+                    {h.latitude != null && h.longitude != null && <> · <a href={mapsUrl(h.latitude, h.longitude)} target="_blank" rel="noreferrer" className="text-primary hover:underline">{h.latitude.toFixed(5)}, {h.longitude.toFixed(5)}</a></>}
+                    {h.accuracy_m != null && ` · ±${Math.round(h.accuracy_m)} m`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-sm text-slate-500">No location history recorded{has ? ' (this location was saved before history was kept)' : ''}.</p>}
+        </>
+      )}
     </Card>
   )
 }
@@ -238,18 +293,18 @@ function DealerContent({ id, salesman, back }: { id: string; salesman: boolean; 
         { label: 'Pending Follow-ups', value: d.stats.pending_followups }, { label: 'Overdue Follow-ups', value: d.stats.overdue_followups, tone: d.stats.overdue_followups ? 'red' : undefined },
       ]} />
       <div className="mb-5"><Pills value={tab} onChange={setTab} options={[['overview', 'Overview'], ['visits', 'Visits'], ['orders', 'Orders'], ['followups', 'Follow-ups'], ['activity', 'Activity']]} /></div>
-      {salesman && <p role="note" className="mb-5 rounded-lg border bg-slate-50 p-3 text-sm text-slate-600">History is read-only. Each order shows the salesman who originally created it, including orders recorded before an area transfer.</p>}
 
       {tab === 'overview' && (
         <>
           <Profile d={d} onSaved={reload} />
+          {!salesman && <ShopLocation id={id} />}
           <Card title="Contacts">
             {d.contacts.length ? (
               <ul className="divide-y text-sm">
                 {d.contacts.map((c) => (
-                  <li key={c.id} className="flex justify-between py-2">
+                  <li key={c.id} className="flex flex-col gap-0.5 py-2 sm:flex-row sm:justify-between sm:gap-4">
                     <span><b>{c.name}</b>{c.designation && <span className="text-slate-500"> · {c.designation}</span>}</span>
-                    <span className="text-slate-600">{[c.phone, c.email].filter(Boolean).join(' · ') || '—'}</span>
+                    <span className="break-words text-slate-600">{[c.phone, c.email].filter(Boolean).join(' · ') || '—'}</span>
                   </li>
                 ))}
               </ul>

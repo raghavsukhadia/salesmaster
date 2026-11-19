@@ -114,7 +114,7 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 25,
     "EXCEPTION_HANDLER": "apps.visits.exceptions.api_exception_handler",
     # Only views that opt in with throttle_scope use these (see apps/field/views.py).
-    "DEFAULT_THROTTLE_RATES": {"field_ping": "60/min", "visit_photo": "60/min", "login_account": "10/min", "login_address": "60/min"},
+    "DEFAULT_THROTTLE_RATES": {"field_ping": "60/min", "visit_photo": "60/min", "login_account": "10/min", "login_address": "60/min", "password_change": "10/hour"},
 }
 
 SIMPLE_JWT = {
@@ -143,10 +143,11 @@ FIELD_TRACKING = {
     "AUDIT_RETENTION_DAYS": 365,
     "NEARBY_RADII_KM": (1, 3, 5, 10, 20),
     "NEARBY_LIMIT": 100,
-    "CONSENT_VERSION": "2026-11-v1",
+    "CONSENT_VERSION": "2026-11-v2",
 }
 
 # Visit photos. Files are private: they are served only through an authenticated view, never as public media.
 MEDIA_ROOT = BASE_DIR / "media"
-# Car photos a salesman must attach to every visit the app saves. Set VISIT_MIN_PHOTOS=0 to switch the rule off.
-VISIT_MIN_PHOTOS = int(os.getenv("VISIT_MIN_PHOTOS", "2"))
+# Car photos a salesman must attach to every visit the app saves. 0 (the default) makes photos optional: they can
+# still be added. Set VISIT_MIN_PHOTOS=2 (or any number) to require that many.
+VISIT_MIN_PHOTOS = int(os.getenv("VISIT_MIN_PHOTOS", "0"))

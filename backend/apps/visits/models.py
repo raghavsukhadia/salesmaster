@@ -116,10 +116,24 @@ class Followup(models.Model):
         NO_ANSWER = "no_answer"
         NOT_INTERESTED = "not_interested"
 
+    class Action(models.TextChoices):
+        """What the salesman committed to do next ("What should you do next?" when recording a visit)."""
+
+        CALL_DEALER = "call_dealer", "Call dealer"
+        SEND_QUOTATION = "send_quotation", "Send quotation"
+        SEND_SAMPLE = "send_sample", "Send sample"
+        REVISIT_DEALER = "revisit_dealer", "Revisit dealer"
+        COLLECT_PAYMENT = "collect_payment", "Collect payment"
+        OTHER = "other", "Other"
+
     dealer = models.ForeignKey(Dealer, on_delete=models.CASCADE, related_name="followups")
     salesman = models.ForeignKey(Salesman, on_delete=models.PROTECT, related_name="followups")
     visit = models.ForeignKey(Visit, null=True, blank=True, on_delete=models.SET_NULL, related_name="followups")
     parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="children")
+    # Blank on follow-ups made before this field existed, and on reminders created on their own.
+    action = models.CharField(max_length=16, choices=Action.choices, blank=True)
+    # The salesman's own words when the action is "other"; always blank otherwise.
+    action_text = models.CharField(max_length=200, blank=True)
     due_date = models.DateField(db_index=True)
     # Optional time of day for the reminder (local time). NULL = "any time that day"; overdue/due-today stay date-based.
     due_time = models.TimeField(null=True, blank=True)
@@ -131,6 +145,13 @@ class Followup(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=["salesman", "status", "due_date"])]
+
+    @property
+    def task(self) -> str:
+        """The thing to do, in words: the chosen action, or what the salesman typed for "other". Blank when never set."""
+        if self.action == self.Action.OTHER:
+            return self.action_text
+        return self.get_action_display() if self.action else ""
 
 
 def visit_photo_path(instance, filename):

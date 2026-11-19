@@ -264,7 +264,7 @@ class FollowupsView(APIView):
                 "id": f.id, "due_date": f.due_date, "due_time": f.due_time.strftime("%H:%M") if f.due_time else None,
                 "salesman": person(f.salesman), "dealer": f.dealer.name,
                 "location": ", ".join(x for x in (f.dealer.city, f.dealer.state) if x),
-                "title": f.notes or "Follow up", "priority": f.priority, "outcome": f.outcome,
+                "title": f.task or f.notes or "Follow up", "priority": f.priority, "outcome": f.outcome,
                 "state": followup_state(f, today),
             } for f in page],
         })

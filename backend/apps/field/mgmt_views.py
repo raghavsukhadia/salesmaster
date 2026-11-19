@@ -44,17 +44,23 @@ class LiveMapView(APIView):
         last_end = dict(
             WorkSession.objects.filter(ended_at__isnull=False).values_list("salesman_id").annotate(m=Max("ended_at"))
         )
+        # Off duty, the map still shows where the salesman was last seen: the latest fix of their most recent session.
+        last_seen = {}
+        for s in WorkSession.objects.filter(ended_at__isnull=False, last_fix_at__isnull=False, last_lat__isnull=False).order_by("salesman_id", "-last_fix_at"):
+            last_seen.setdefault(s.salesman_id, s)
         rows = []
         for sm in Salesman.objects.filter(is_active=True).select_related("user"):
             session = active.get(sm.id)
             st = services.tracking_status(session, now)
+            fix = services.last_fix(session) if session else services.last_fix(last_seen.get(sm.id))
             rows.append({
                 "id": sm.id, "name": person(sm), "phone": sm.phone_number,
                 "on_duty": session is not None, **st,
                 "session_started_at": session.started_at if session else None,
                 "last_contact_at": session.last_contact_at if session else None,
                 "last_duty_ended_at": None if session else last_end.get(sm.id),
-                "last_fix": services.last_fix(session),
+                "last_fix": fix,
+                "last_seen_s": max(0, int((now - fix["captured_at"]).total_seconds())) if fix else None,
             })
         rows.sort(key=lambda r: (self.ORDER[r["status"]], r["name"].lower()))
         counts = {k: 0 for k in self.ORDER}
@@ -218,6 +224,32 @@ def location_payload(d: Dealer) -> dict:
     }
 
 
+def location_history(dealer_id: int) -> list[dict]:
+    """Every capture, change and verification of a dealer's shop location, newest first: who, when, and where."""
+    out = []
+    rows = FieldAuditLog.objects.filter(dealer_id=dealer_id, action__in=[A.DEALER_LOCATION_SET, A.DEALER_LOCATION_VERIFY]).select_related("actor")
+    for r in rows[:100]:
+        d = r.detail or {}
+        pos = d.get("after") or d  # a set stores the new position under "after"; a verify stores it at the top level
+        lat, lng = pos.get("latitude"), pos.get("longitude")
+        if r.action == A.DEALER_LOCATION_VERIFY:
+            event = "verified"
+        elif d.get("via") == "new_dealer_form":
+            event = "captured"
+        else:
+            event = "updated"
+        out.append({
+            "id": r.id, "at": r.created_at, "event": event,
+            "by": (r.actor.get_full_name() or r.actor.get_username()) if r.actor else r.actor_username or "System",
+            "by_role": getattr(r.actor, "role", "") if r.actor else "",
+            "latitude": float(lat) if lat not in (None, "") else None,
+            "longitude": float(lng) if lng not in (None, "") else None,
+            "accuracy_m": pos.get("accuracy_m"),
+            "source": pos.get("source", ""),
+        })
+    return out
+
+
 def _has_location(d: Dealer) -> bool:
     return d.latitude is not None and d.longitude is not None and valid_coordinate(d.latitude, d.longitude)
 
@@ -229,7 +261,7 @@ class DealerLocationView(APIView):
         d = Dealer.objects.select_related("location_verified_by").filter(pk=pk).first()
         if d is None:
             raise NotFound("Dealer not found")
-        return Response(location_payload(d))
+        return Response({**location_payload(d), "history": location_history(d.id)})
 
     def put(self, request, pk):
         s = DealerLocationSerializer(data=request.data)

@@ -30,20 +30,23 @@ window.addEventListener('sm:logout', () => tracker.shutdown())
 /** Read-only view of the tracker state. */
 export const useTrackerState = () => useSyncExternalStore(tracker.subscribe, tracker.getState)
 
-/** Mount once per salesman page. Never stops recording on unmount; sign-out calls tracker.shutdown(). */
+/** The salesman shell owns startup and recording across every page. */
 export function useFieldTracker(userId: number) {
   useEffect(() => {
-    void tracker.init(userId)
-    const online = () => tracker.setOnline(true)
+    void tracker.open(userId)
+    const online = () => { tracker.setOnline(true); void tracker.open(userId) }
     const offline = () => tracker.setOnline(false)
-    const visible = () => { if (document.visibilityState === 'visible') void tracker.refresh() }
+    const visible = () => { if (document.visibilityState === 'visible') void tracker.open(userId) }
     window.addEventListener('online', online)
     window.addEventListener('offline', offline)
+    window.addEventListener('focus', visible)
     document.addEventListener('visibilitychange', visible)
     return () => {
       window.removeEventListener('online', online)
       window.removeEventListener('offline', offline)
+      window.removeEventListener('focus', visible)
       document.removeEventListener('visibilitychange', visible)
+      tracker.shutdown()
     }
   }, [userId])
   return useTrackerState()

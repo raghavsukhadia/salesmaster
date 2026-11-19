@@ -90,7 +90,7 @@ export default function ComparePage() {
       {ready ? <Results /> : (
         <Card>
           <EmptyState icon={<GitCompareArrows size={20} aria-hidden />} title={kind ? `Choose two ${noun} to compare` : 'Choose what to compare'}
-            hint={kind ? 'Growth or decline is shown from A to B. The other filters above apply to both sides.' : 'Pick salesmen, products, dealers, months or date ranges above.'} />
+            hint={kind ? 'Growth or decline is shown from A to B. The other filters above apply to both sides.' : 'Pick salesman, products, dealers, months or date ranges above.'} />
         </Card>
       )}
     </>

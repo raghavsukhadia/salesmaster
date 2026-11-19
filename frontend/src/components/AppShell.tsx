@@ -5,6 +5,9 @@ import { crumbsFor, useCrumbName } from './crumbs'
 import { managementNav, salesmanNav } from './nav'
 import Sidebar from './Sidebar'
 import TopBar from './TopBar'
+import DutyTracker from './DutyTracker'
+import BottomNav from './BottomNav'
+import { useFollowupSummary } from '../visit/followupBadge'
 
 const KEY = 'sm_sidebar_collapsed'
 const readCollapsed = () => { try { return localStorage.getItem(KEY) === '1' } catch { return false } }
@@ -15,7 +18,10 @@ export default function AppShell({ me, children }: { me: Me; children: React.Rea
   const { pathname } = useLocation()
   const [collapsed, setCollapsed] = useState(readCollapsed)
   const [drawer, setDrawer] = useState(false)
-  const items = me.role === 'salesman' ? salesmanNav : managementNav
+  const salesman = me.role === 'salesman'
+  const items = salesman ? salesmanNav : managementNav
+  // One poll for the follow-up count, shared by the sidebar and the phone bottom bar. Nothing is requested for management.
+  const followups = useFollowupSummary(items.some((i) => i.badge === 'followups'), pathname)
 
   const setCollapsedSaved = (v: boolean) => {
     setCollapsed(v)
@@ -40,12 +46,17 @@ export default function AppShell({ me, children }: { me: Me; children: React.Rea
   return (
     <div className="min-h-screen bg-white text-slate-900">
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[80] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white">Skip to content</a>
-      <Sidebar items={items} collapsed={collapsed} open={drawer} onNavigate={() => setDrawer(false)} onExpand={() => setCollapsedSaved(false)} />
+      <Sidebar items={items} followups={followups} collapsed={collapsed} open={drawer} onNavigate={() => setDrawer(false)} onExpand={() => setCollapsedSaved(false)} />
       {drawer && <div aria-hidden className="fixed inset-0 z-30 bg-primary/40 lg:hidden" onClick={() => setDrawer(false)} />}
       <div className={`transition-[padding] duration-200 print:pl-0 ${collapsed ? 'lg:pl-16' : 'lg:pl-64'}`}>
         <TopBar me={me} onToggle={toggle} />
-        <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[1440px] px-4 py-6 outline-none sm:px-6 lg:px-8">{children}</main>
+        {/* Salesman on a phone: leave room so the fixed bottom bar never covers the end of a page. */}
+        <main id="main" tabIndex={-1} className={`mx-auto w-full max-w-[1440px] px-4 pt-6 outline-none sm:px-6 lg:px-8 ${salesman ? 'pb-24 lg:pb-6' : 'pb-6'}`}>
+          {salesman && <DutyTracker userId={me.id} />}
+          {children}
+        </main>
       </div>
+      {salesman && <BottomNav items={items} followups={followups} />}
     </div>
   )
 }

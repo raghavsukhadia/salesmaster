@@ -108,7 +108,7 @@ export default function AccessGrants() {
         {loading && !list && <p className="text-sm text-slate-500">Loading…</p>}
         {list && list.results.length === 0 && <p className="py-6 text-center text-sm text-slate-500">No {status} grants.</p>}
         {list && list.results.length > 0 && (
-          <Table head={['Grantee', 'Source Owner', 'Scope', 'Type', 'Starts', 'Expires', 'Status', 'Action'].map((label) => ({ label }))}>
+          <Table stack head={['Grantee', 'Source Owner', 'Scope', 'Type', 'Starts', 'Expires', 'Status', 'Action'].map((label) => ({ label }))}>
             {list.results.map((g) => (
               <tr key={g.id} className="border-t">
                 <td className="px-4 py-3 font-medium">{g.grantee}</td>

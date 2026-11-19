@@ -4,12 +4,14 @@ import { ChevronDown, Hourglass, X } from 'lucide-react'
 import { activeLabel, RANGE_ROUTES, type NavItem } from './nav'
 import Tooltip from './Tooltip'
 import { useToast } from './ui'
-import { useFollowupSummary } from '../visit/followupBadge'
+import type { FollowupSummary } from '../visit/followupBadge'
 
 const ROW = 'group relative flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium transition-colors'
 
 interface Props {
   items: NavItem[]
+  /** Live follow-up counts for the badge (salesman only). Owned by AppShell so the bottom bar and this menu share one poll. */
+  followups: FollowupSummary | null
   /** Desktop icon-only mode. On small screens the drawer is always full width, whatever this says. */
   collapsed: boolean
   /** Mobile drawer state. */
@@ -18,7 +20,7 @@ interface Props {
   onExpand: () => void
 }
 
-export default function Sidebar({ items, collapsed, open, onNavigate, onExpand }: Props) {
+export default function Sidebar({ items, followups, collapsed, open, onNavigate, onExpand }: Props) {
   const { pathname, search } = useLocation()
   const toast = useToast()
   const active = activeLabel(items, pathname)
@@ -27,8 +29,6 @@ export default function Sidebar({ items, collapsed, open, onNavigate, onExpand }
   const hide = collapsed ? 'lg:hidden' : ''
   const center = collapsed ? 'lg:justify-center lg:px-0' : ''
   const home = items.find((i) => i.to)?.to ?? '/'
-  // The count only exists for the salesman menu; for everyone else the hook does nothing and makes no request.
-  const followups = useFollowupSummary(items.some((i) => i.badge === 'followups'), pathname)
 
   const target = (to: string) => (RANGE_ROUTES.includes(to) && range ? { pathname: to, search: `?range=${range}` } : to)
 
@@ -44,8 +44,8 @@ export default function Sidebar({ items, collapsed, open, onNavigate, onExpand }
       </div>
 
       <nav className="flex flex-1 flex-col overflow-y-auto px-3 pb-4 pt-2">
-        {/* Mobile drawer: items sit at the bottom edge (thumb reach). mt-auto, not justify-end, so a long list scrolls instead of clipping. */}
-        <ul className="mt-auto space-y-1 lg:mt-0">
+        {/* Items start right under the logo on every screen size, so the drawer has no empty gap; a long list scrolls inside <nav>. */}
+        <ul className="space-y-1">
           {items.map((it) => {
             const Icon = it.icon
             const icon = <Icon size={18} strokeWidth={1.75} className="shrink-0" aria-hidden />

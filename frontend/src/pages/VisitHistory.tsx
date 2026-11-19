@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CalendarClock, ChevronRight, MapPin, Package, Search } from 'lucide-react'
 import { Badge, Card, EmptyState, fmtDate, fmtTime, Pager, qs, useApi, useDebounced } from '../components/ui'
-import { fmtDue, visitStatus } from '../visit/format.ts'
+import { fmtDue, localDate, visitStatus } from '../visit/format.ts'
 import { fmtInr } from '../visit/orderMath.ts'
 
 interface Row {
@@ -18,12 +18,15 @@ const field = 'h-10 w-full rounded-lg border bg-white px-3 text-sm'
 export default function VisitHistory() {
   const [q, setQ] = useState('')
   const dq = useDebounced(q)
-  const [range, setRange] = useState('')
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
   const reset = (set: (v: string) => void) => (v: string) => { set(v); setPage(1) }
-  const { data, loading, error } = useApi<Data>(`/api/salesman/visits/?${qs({ q: dq, range, status, page })}`)
-  const filtered = !!(dq || range || status)
+  // A typed From later than To is not sent (the server would reject it); the dates stay visible with a hint instead.
+  const badRange = !!(from && to && from > to)
+  const { data, loading, error } = useApi<Data>(`/api/salesman/visits/?${qs({ q: dq, from: badRange ? '' : from, to: badRange ? '' : to, status, page })}`)
+  const filtered = !!(dq || from || to || status)
 
   return (
     <div className="flex flex-col gap-4">
@@ -32,18 +35,27 @@ export default function VisitHistory() {
           {data.summary.total} visits · {data.summary.orders} with orders · {data.summary.last_7_days} in the last 7 days
         </p>
       )}
-      <div className="grid gap-2 sm:grid-cols-[1fr_11rem_13rem]">
-        <div className="relative">
+      <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[1fr_9.5rem_9.5rem_12rem]">
+        <div className="relative col-span-2 sm:col-span-1">
           <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />
           <input aria-label="Search visits" placeholder="Search dealer, phone, city or notes" value={q} onChange={(e) => reset(setQ)(e.target.value)} className={`${field} pl-9`} />
         </div>
-        <select aria-label="Date range" value={range} onChange={(e) => reset(setRange)(e.target.value)} className={field}>
-          <option value="">Any date</option><option value="today">Today</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option>
-        </select>
-        <select aria-label="Status" value={status} onChange={(e) => reset(setStatus)(e.target.value)} className={field}>
+        <label className="block min-w-0">
+          <span className="mb-1 block text-xs font-medium text-slate-500">From</span>
+          <input type="date" value={from} max={to || localDate()} onChange={(e) => reset(setFrom)(e.target.value)} className={field} aria-invalid={badRange || undefined} />
+        </label>
+        <label className="block min-w-0">
+          <span className="mb-1 block text-xs font-medium text-slate-500">To</span>
+          <input type="date" value={to} min={from || undefined} max={localDate()} onChange={(e) => reset(setTo)(e.target.value)} className={field} aria-invalid={badRange || undefined} />
+        </label>
+        <select aria-label="Status" value={status} onChange={(e) => reset(setStatus)(e.target.value)} className={`${field} col-span-2 sm:col-span-1`}>
           <option value="">Any status</option><option value="order">Order placed</option><option value="followup">Follow-up pending</option><option value="visited">Visited</option>
         </select>
       </div>
+      {badRange && <p role="alert" className="-mt-2 text-xs text-red-600">The From date must not be after the To date.</p>}
+      {(from || to) && (
+        <button type="button" onClick={() => { setFrom(''); setTo(''); setPage(1) }} className="-mt-2 self-start text-xs font-medium text-primary hover:underline">Clear dates</button>
+      )}
 
       {loading && !data && <p role="status" className="text-slate-500">Loading…</p>}
       {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">Could not load visits. Please refresh.</p>}

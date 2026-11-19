@@ -225,7 +225,7 @@ If the final Vercel/custom hostname differs from the one in the backend YAML, up
 ## 10. Verify the live deployment
 
 1. Open Vercel `/login`, sign in as `admin` using its existing password, and check that sample dealers, orders and extra salesmen are absent.
-2. Sign out, open `/salesman-login`, and sign in as `demo@sunkool.in` using its existing password. The account should have its salesman profile and an empty dealer book.
+2. Sign out, open `/login`, and sign in as `demo@sunkool.in` using its existing password. The account should have its salesman profile and an empty dealer book.
 3. Refresh a nested React route. Check the browser Network panel: API requests must go to Cloud Run and must return JSON rather than Vercel's `index.html`.
 4. Record an intended visit with the required photos. Verify that the photo can still be opened after a new backend revision is deployed; its bytes must be in the private bucket.
 5. Test report downloads and login/token refresh. The Cloud backend exposes `Content-Disposition` through CORS so export filenames remain available.

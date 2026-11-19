@@ -107,7 +107,7 @@ export default function GlobalSearch() {
 
   return (
     <>
-      <button type="button" aria-label="Search dealers and salesmen" onClick={() => setMobile(true)}
+      <button type="button" aria-label="Search dealers and salesman" onClick={() => setMobile(true)}
         className="grid size-10 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 md:hidden"><Search size={18} aria-hidden /></button>
       <div ref={box} role="search"
         className={`${mobile ? 'fixed inset-x-0 top-0 z-50 border-b bg-white p-3 shadow-pop' : 'hidden'} md:relative md:z-auto md:block md:border-0 md:bg-transparent md:p-0 md:shadow-none`}>
@@ -116,7 +116,7 @@ export default function GlobalSearch() {
           <input ref={input} value={q} onChange={(e) => { setQ(e.target.value); setFocused(true) }} onFocus={() => setFocused(true)} onKeyDown={onKeyDown}
             role="combobox" aria-expanded={open} aria-controls={listId} aria-autocomplete="list" autoComplete="off"
             aria-activedescendant={open && items[active] ? `${listId}-${items[active].key}` : undefined}
-            aria-label="Search dealers and salesmen" placeholder="Search dealers, salesmen…"
+            aria-label="Search dealers and salesman" placeholder="Search dealers, salesman…"
             className="h-full min-w-0 flex-1 bg-transparent text-sm outline-none focus-visible:border-transparent focus-visible:shadow-none" />
           {q ? <button type="button" aria-label="Clear search" onClick={() => { setQ(''); input.current?.focus() }} className="rounded p-1 text-slate-400 hover:text-slate-700"><X size={14} aria-hidden /></button>
             : <kbd className="hidden rounded border bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-500 lg:block">{isMac ? '⌘K' : 'Ctrl K'}</kbd>}
@@ -125,10 +125,10 @@ export default function GlobalSearch() {
 
         {open && (
           <div className="absolute left-3 right-3 top-full z-50 mt-1 max-h-[70vh] overflow-y-auto rounded-xl border bg-white shadow-pop md:left-0 md:right-auto md:mt-2 md:w-[26rem]">
-            {!ready && <p className="px-4 py-6 text-center text-sm text-slate-500">Type at least 2 characters to search dealers and salesmen.</p>}
+            {!ready && <p className="px-4 py-6 text-center text-sm text-slate-500">Type at least 2 characters to search dealers and salesman.</p>}
             {ready && loading && <p role="status" className="flex items-center justify-center gap-2 px-4 py-6 text-sm text-slate-500"><LoaderCircle size={16} className="animate-spin" aria-hidden />Searching…</p>}
             {ready && failed === dq && <p role="alert" className="px-4 py-6 text-center text-sm text-red-600">Search failed. Check your connection and try again.</p>}
-            {ready && !loading && failed !== dq && items.length === 0 && <p className="px-4 py-6 text-center text-sm text-slate-500">No dealers or salesmen match “{dq}”.</p>}
+            {ready && !loading && failed !== dq && items.length === 0 && <p className="px-4 py-6 text-center text-sm text-slate-500">No dealers or salesman match “{dq}”.</p>}
             {items.length > 0 && (
               <ul id={listId} role="listbox" aria-label="Search results" className="py-1">
                 {groups.map((g) => {

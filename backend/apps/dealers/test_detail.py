@@ -102,11 +102,47 @@ def test_manager_can_edit_profile(world):
     assert d.city == "Mumbai" and d.status.name == "Active" and d.phone == "9999988888"
 
 
-def test_edit_forbidden_for_salesman_even_if_owner(world):
-    r = api(world["alice"]).patch(url(world["d"]), {"city": "X"}, format="json")
+@pytest.mark.parametrize("payload", [
+    {"phone": "9000011111"}, {"whatsapp": "9000011111"}, {"gst_number": "29ABCDE1234F1Z5"}, {"shop_name": "X"},
+    {"status": "Active"}, {"is_archived": True},
+    {"name": "New name", "phone": "9000011111"},  # one forbidden field refuses the whole request
+])
+def test_salesman_owner_cannot_edit_beyond_name_and_address(world, payload):
+    r = api(world["alice"]).patch(url(world["d"]), payload, format="json")
     assert r.status_code == 403
-    world["d"].refresh_from_db()
-    assert world["d"].city == "Pune"
+    d = world["d"]; before = (d.name, d.phone, d.gst_number, d.is_archived)
+    d.refresh_from_db()
+    assert (d.name, d.phone, d.gst_number, d.is_archived) == before
+
+
+def test_salesman_owner_can_edit_name_and_address(world):
+    payload = {"name": "  Sharma Auto Care ", "address": "12 MG Road", "city": "Nagpur", "state": "Maharashtra", "pincode": "440001"}
+    r = api(world["alice"]).patch(url(world["d"]), payload, format="json")
+    assert r.status_code == 200
+    assert r.data["name"] == "Sharma Auto Care" and r.data["address"] == "12 MG Road" and r.data["pincode"] == "440001"
+    d = world["d"]; d.refresh_from_db()
+    assert (d.name, d.address, d.city, d.state, d.pincode) == ("Sharma Auto Care", "12 MG Road", "Nagpur", "Maharashtra", "440001")
+    assert d.phone == "9876543210" and d.gst_number == "27ABCDE1234F1Z5"  # untouched
+
+
+@pytest.mark.parametrize("payload", [{"name": "  "}, {"pincode": "12"}])
+def test_salesman_edit_is_validated(world, payload):
+    assert api(world["alice"]).patch(url(world["d"]), payload, format="json").status_code == 400
+
+
+def test_salesman_edit_needs_current_ownership(world):
+    d = world["d"]
+    DealerAccessGrant.objects.create(salesman=world["b"], dealer=d)
+    assert api(world["bob"]).patch(url(d), {"name": "Mine now"}, format="json").status_code == 403  # a grant is view-only
+    assert api(world["carol"]).patch(url(d), {"name": "Mine now"}, format="json").status_code == 404  # no access at all
+    assert api(world["admin"]).patch(url(d), {"name": "Admin edit"}, format="json").status_code == 200
+    d.refresh_from_db()
+    assert d.name == "Admin edit"
+    # Transfer the dealer away: the previous owner can no longer edit it.
+    DealerOwnershipHistory.objects.filter(dealer=d, ended_at__isnull=True).update(ended_at=timezone.now())
+    assert api(world["alice"]).patch(url(d), {"name": "Still mine?"}, format="json").status_code in (403, 404)
+    d.refresh_from_db()
+    assert d.name == "Admin edit"
 
 
 @pytest.mark.parametrize("payload", [{"gst_number": "BAD"}, {"pincode": "12"}, {"name": "  "}, {"status": "Nope"}])

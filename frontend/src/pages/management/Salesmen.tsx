@@ -109,7 +109,7 @@ export default function Salesmen() {
   const remove = async (s: Row) => {
     if (!(await confirm({
       title: `Delete ${s.name}?`, confirmLabel: 'Delete salesman', danger: true,
-      message: 'This permanently removes the account. It only works for salesmen with no visits, follow-ups or dealer ownership; otherwise use Offboard.',
+      message: 'This permanently removes the account. It only works for a salesman with no visits, follow-ups or dealer ownership; otherwise use Offboard.',
     }))) return
     act(s.id, () => api(`/api/management/salesmen/${s.id}/`, { method: 'DELETE' }), `${s.name} deleted`)
   }
@@ -119,21 +119,21 @@ export default function Salesmen() {
       <PageHeader title="Salesman"
         action={admin ? <Button onClick={() => setAdding(true)}><UserPlus size={16} aria-hidden />Add salesman</Button> : undefined} />
       <SearchBox value={q} onChange={setQ} placeholder="Search by name, username, phone or email" />
-      <Table head={[{ label: 'Name' }, { label: 'Phone' }, { label: 'Email' }, { label: 'Status' }, { label: 'Territories' }, { label: 'Actions', right: true }]}
+      <Table stack head={[{ label: 'Name' }, { label: 'Phone' }, { label: 'Email' }, { label: 'Status' }, { label: 'Territories' }, { label: 'Actions', right: true }]}
         loading={loading && !data} error={error && !data} onRetry={reload} empty={rows.length === 0}
         emptyTitle={q ? 'No salesman matches your search' : 'No salesman yet'} emptyHint={q ? undefined : admin ? 'Use “Add salesman” to create the first account.' : undefined}>
         {rows.map((s) => (
           <tr key={s.id}>
             <td><Link to={`/salesmen/${s.id}`} className="font-medium text-slate-900 hover:text-primary hover:underline">{s.name}</Link><div className="text-xs text-slate-500">@{s.username}</div></td>
-            <td className="whitespace-nowrap">{s.phone}</td>
+            <td className="sm:whitespace-nowrap">{s.phone}</td>
             <td>{s.email || '—'}</td>
             <td>{s.active ? <Badge tone="green">Active</Badge> : <Badge tone="gray">Inactive</Badge>}</td>
             <td>
               <div className="max-w-[16rem] text-slate-600">{s.territories.length ? s.territories.join(', ') : 'No territories assigned'}</div>
               {admin && <Link to={`/salesmen/${s.id}#territories`} className="text-xs font-medium text-primary hover:underline">Edit territories</Link>}
             </td>
-            <td>
-              <div className="flex justify-end gap-2">
+            <td data-label="">
+              <div className="flex flex-wrap gap-2 sm:justify-end">
                 <Link to={`/salesmen/${s.id}`} className={buttonClass('secondary', 'sm')}>Edit</Link>
                 <Button size="sm" variant="secondary" disabled={busyId === s.id} onClick={() => toggle(s)}>{s.active ? 'Deactivate' : 'Activate'}</Button>
                 {admin && (

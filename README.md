@@ -21,15 +21,19 @@ Tests: `cd backend; .venv\Scripts\python -m pytest`  (frontend logic: `cd fronte
 
 ## Field Sales (GPS duty tracking, live map, nearby dealers)
 
-Salesmen declare duty sessions and the app records GPS only inside them; managers get a live map, nearby-dealer
+Opening the signed-in salesman app automatically starts or resumes a duty session. The app records GPS only inside these sessions, with browser location permission; managers get a live map, nearby-dealer
 search (1/3/5/10/20 km), reverse search (nearest salesman to a dealer) and a verified dealer location master.
 Design, API, permissions, migration plan and trust model: [docs/FIELD_MODULE.md](docs/FIELD_MODULE.md).
 The tracking map shows every located dealer as a red pin and the selected salesman with a distinct person icon. Data requirements and Google Cloud import notes: [docs/DEALER_MAP.md](docs/DEALER_MAP.md).
 After `migrate`, schedule `manage.py close_stale_sessions` (every 15 min), `manage.py purge_location_data` and
 `manage.py purge_orphan_photos` (both daily).
 
-Every visit the app records must carry at least 2 car photos (Order Details step). The server enforces it
-(`VISIT_MIN_PHOTOS`, default 2, `0` switches it off); photos are re-encoded without GPS/EXIF, stored privately under
+There is no separate Field Duty screen or manual Start/End duty step. The salesman app shell starts duty on any page and shows location-sharing status and the notice throughout the app. Sign-out immediately stops GPS, uploads queued points when possible and closes the duty session; offline closure is retried at the next connection/login. The browser still controls location permission. Closing the browser stops client recording, but immediate server-side closure on browser exit is not guaranteed; existing session expiry and stale/lost statuses still apply.
+
+On the Order Details step a salesman can add car photos and tap **Capture location**; both are optional and are shown to
+management on the Visit page (photos, plus the visit location with an "Open map" link). If the salesman pressed "Detect current
+location" on a new dealer, that position is also saved as the visit's location. A visit never needs photos: the server enforces a
+minimum only if `VISIT_MIN_PHOTOS` is set above 0 (default 0). Photos are re-encoded without GPS/EXIF, stored privately under
 `backend/media/` and shown on the visit pages. Back that folder up together with the database.
 
 ## Architecture decisions
@@ -65,12 +69,12 @@ Salesmen actions, Assign Owners, Export, and the visit/follow-up View pages are 
 | Endpoint | Who | Purpose |
 |---|---|---|
 | `GET /api/dealers/:id/` | any authenticated user who can access the dealer | profile, contacts, stats, `permissions` flags |
-| `PATCH /api/dealers/:id/` | admin, manager | edit profile, status, archive. Rejects bad GSTIN/pincode and a phone/GST used by another dealer |
+| `PATCH /api/dealers/:id/` | admin, manager; the owning salesman for `name`, `address`, `city`, `state`, `pincode` only | edit profile, status, archive. Rejects bad GSTIN/pincode and a phone/GST used by another dealer. A salesman sending any other field gets 403 and nothing is saved; one who only holds an access grant also gets 403 |
 | `GET /api/dealers/:id/{visits,orders,followups,activity}/?page=` | same as GET | paginated history (25 per page). Orders are visits that have `visit_order_items` |
 | `POST /api/dealers/:id/transfer/` | admin | `{salesman_id, reason}`. Ends the current ownership row, opens a new one, updates legacy `primary_salesman`, retires a now-redundant grant |
 | `POST /api/dealers/:id/grants/`, `POST .../grants/:gid/revoke/` | admin | add and revoke access grants. One active grant per salesman and dealer (DB constraint) |
 
-Role matrix: **admin** does everything. **Manager** views and edits the profile, and sees owner, ownership history and grants read-only. **Salesman** gets read-only access to dealers they own or hold a grant for through **My Dealers** (`/my-dealers`, `/my-dealers/:id`). Their response has no owner, ownership history or grants and the activity feed omits ownership and access events. An inaccessible or missing dealer returns the same 404.
+Role matrix: **admin** does everything. **Manager** views and edits the profile, and sees owner, ownership history and grants read-only. **Salesman** gets read-only access to dealers they own or hold a grant for through **My Dealers** (`/my-dealers`, `/my-dealers/:id`). The one exception is the **Edit** buttons for dealer name and address on Visit Details (`/visit-history/:id`), shown only for dealers the salesman currently owns (`dealer.can_edit` in the visit payload). Their response has no owner, ownership history or grants and the activity feed omits ownership and access events. An inaccessible or missing dealer returns the same 404.
 
 ### Area transfers and historical orders
 
@@ -88,12 +92,14 @@ Salesman-only (`IsSalesman`); admin and manager get 403 from the API and are red
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /api/salesman/visits/?q=&range=today\|7\|30&order=yes\|no&source=&page=` | own visits, newest first, 25 per page, with a summary (total, with orders, last 7 days) |
+| `GET /api/salesman/visits/?q=&from=YYYY-MM-DD&to=YYYY-MM-DD&status=&order=yes\|no&source=&page=` | own visits, newest first, 25 per page, with a summary (total, with orders, last 7 days). `from`/`to` are inclusive local days and either may be omitted; a bad date or `from` after `to` returns 400. The older `range=today\|7\|30` still works |
 | `GET /api/salesman/visits/:id/` | dealer, notes, order lines, product interests, location, follow-ups |
 | `GET /api/salesman/followups/?tab=pending\|due_today\|overdue\|completed&q=&priority=&page=` | tab list plus counts for every tab |
 | `POST /api/salesman/followups/:id/complete/` | `{outcome?, notes?}`; outcome is one of interested, call_again, send_quotation, no_answer, not_interested |
 | `POST /api/salesman/followups/:id/reschedule/` | `{due_date, priority?, notes?}`; today up to one year ahead |
 | `POST /api/salesman/followups/:id/cancel/` | `{notes?}` |
+
+**Next step on Record Visit.** The Order details step ends with a required "What should you do next?": Nothing, Call dealer, Send quotation, Send sample, Revisit dealer, Collect payment or Other, then "When?" (Tomorrow, In 2 Days, Next Week or a custom date), a "What to do" text for Other, and an optional note. The form will not save until one is chosen; "Nothing" saves the visit with no follow-up. The choice is stored on the follow-up as `action` (and `action_text` for Other) and returned as `task`, the words shown in the follow-up lists. The API keeps `followup`, `action` and `action_text` optional because field check-ins and follow-ups made before this change have none, so the "required" rule is enforced in the form.
 
 Only pending follow-ups can be changed. A second action on a closed follow-up returns 400, so a double tap cannot apply twice (the row is locked inside a transaction). Cancelled follow-ups are kept but not listed. Pending covers Due Today and Overdue; those states stay derived from `due_date`. Salesman pages now share a three-link nav in the `Guard` header.
 
@@ -123,7 +129,7 @@ Read-only pages reached from the "View" link on Visit Activity and Follow-up Man
 | Endpoint | Returns |
 |---|---|
 | `GET /api/management/visits/:id/` | dealer (with current owner), salesman, date/time, source, notes, three distinct locations (visit, salesman, dealer) plus source, capture time and distance from the dealer in metres, order lines (catalogue vs custom, total quantity), product interests, follow-ups from the visit |
-| `GET /api/management/followups/:id/` | due date, state, days overdue, priority, outcome, notes, dealer, salesman, source visit, earlier and next follow-ups, activity history |
+| `GET /api/management/followups/:id/` | due date, state, days overdue, priority, outcome, what to do (`task`), notes, dealer, salesman, source visit, earlier and next follow-ups, activity history |
 
 Follow-ups have no event log, so "activity history" is derived from the linked visit, the follow-up's creation time, its parent and its next follow-ups. Status changes (complete, reschedule, cancel) are not timestamped. A real audit trail would need an event table or `audit_logs`; that was left out deliberately.
 
@@ -171,6 +177,6 @@ White surfaces, navy `#0b2347` primary, orange `#ff6b1a` accent (tokens in `src/
 - **Date range:** the top-bar selector writes `?range=today|week|month|all` (default 30 days) and only appears where it has an effect: Dashboard "Recent visits" and the Visits page. The KPI cards and Salesman activity are today's numbers by definition.
 - **Global search** (management only): dealers via `GET /api/management/dealers/?q=`, salesmen filtered client-side from the full list. `/` or Ctrl/Cmd+K focuses it.
 - **Alerts (bell):** built from live counts (overdue follow-ups, unassigned dealers, dealers with no visit in 30 days; for salesmen, their overdue and due-today follow-ups). There is no notifications table, so "new" means the counts changed since the menu was last opened on that device.
-- **Not built:** Beat Planning (no beat/route table exists), Reports & Analytics (no reporting endpoints) and Settings are listed in the sidebar as unavailable. Live tracking and nearby dealers come from the `apps/field` work.
+- **Not built:** Settings is listed in the sidebar as unavailable. There is no Beat Planning entry in the sidebar. Live tracking and nearby dealers come from the `apps/field` work.
 
 Additive API fields used by the dashboard (nothing existing was removed or renamed): `GET /api/management/dashboard/` adds `trends` (yesterday's visits and new dealers) and, per salesman, `id` and `last_visit_at`; every visit row adds `checkin` (`{lat, lng, source}` from the visit's GPS fix, or `null`); `GET /api/management/dealers/?visit=stale` lists dealers never visited or not visited for 30 days, the same definition as the dashboard card (`stale_visit_q` in `apps/management/views.py`).

@@ -89,7 +89,7 @@ function DealersList() {
         <Select label="Current Owner" value={owner} onChange={reset(setOwner)}><option value="">All owners</option>{data?.filters.owners.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</Select>
         <DropdownSelect label="Sort" value={sort} onChange={reset(setSort)} options={SORT_OPTIONS} />
       </div>
-      <Table head={[{ label: 'Dealer' }, { label: 'Location' }, { label: 'Status' }, { label: 'Current Owner' }, { label: 'Last Visit' }, { label: 'Next Follow-up' }, { label: 'Access' }, { label: 'Action' }]}
+      <Table stack head={[{ label: 'Dealer' }, { label: 'Location' }, { label: 'Status' }, { label: 'Current Owner' }, { label: 'Last Visit' }, { label: 'Next Follow-up' }, { label: 'Access' }, { label: 'Action' }]}
         loading={loading} error={error} empty={data?.results.length === 0}>
         {data?.results.map((d) => (
           <tr key={d.id}>
@@ -100,7 +100,7 @@ function DealersList() {
             <td className="px-3 text-slate-600">{fmtDate(d.last_visit_at, true)}</td>
             <td className="px-3 text-slate-600">{fmtDate(d.next_followup, true)}</td>
             <td className="px-3 text-slate-600">{d.access ? `${d.access} grant${d.access > 1 ? 's' : ''}` : 'None'}</td>
-            <td className="px-3"><Link to={`/dealers/${d.id}`} aria-label={`View ${d.name}`} className={buttonClass('secondary', 'sm')}>View</Link></td>
+            <td className="px-3" data-label=""><Link to={`/dealers/${d.id}`} aria-label={`View ${d.name}`} className={buttonClass('secondary', 'sm', 'max-sm:h-10 max-sm:w-full')}>View</Link></td>
           </tr>
         ))}
       </Table>

@@ -164,7 +164,8 @@ def test_live_map_status_and_privacy_of_off_duty_salesmen(mgr):
     assert rows["stale"]["status"] == "stale" and rows["stale"]["is_live"] is False and rows["stale"]["age_s"] >= 495
     assert rows["stale"]["last_fix"]["quality"] == "poor"
     assert rows["idle"]["status"] == "no_fix" and rows["idle"]["last_fix"] is None
-    assert rows["off"]["status"] == "off_duty" and rows["off"]["last_fix"] is None  # no coordinates for off-duty staff
+    assert rows["off"]["status"] == "off_duty" and rows["off"]["last_fix"]["latitude"] == 19.2  # last known position
+    assert rows["off"]["last_seen_s"] >= 3995 and rows["idle"]["last_seen_s"] is None
     assert rows["off"]["last_duty_ended_at"] is not None
     assert r["counts"] == {"live": 1, "stale": 1, "lost": 0, "no_fix": 1, "off_duty": 1}
     assert [x["status"] for x in r["salesmen"]] == ["live", "stale", "no_fix", "off_duty"]

@@ -93,7 +93,7 @@ def move_maharashtra(w, **kw):
 # =============================== 1. Dealer entry: names may repeat, mobiles may not ===============================
 
 def new_dealer(**over):
-    d = {"name": "Sharma Auto", "phone": "9111111111", "city": "Pune", "state": "Maharashtra"}
+    d = {"name": "Sharma Auto", "phone": "9111111111", "city": "Pune", "state": "Maharashtra", "latitude": "18.5204", "longitude": "73.8567"}
     d.update(over)
     return {"new_dealer": d}
 
@@ -303,12 +303,17 @@ def test_salesman_dealer_endpoints_are_for_salesmen_only(w):
 
 # =============================== 5. Old history is read-only ===============================
 
-def test_salesman_cannot_edit_a_dealer_or_its_order_history(w, maharashtra):
+def test_salesman_cannot_edit_a_dealer_beyond_name_and_address_or_its_order_history(w, maharashtra):
     move_maharashtra(w)
     before = snapshot()
     d = maharashtra["pune1"]
-    amit = api(w["au"])
-    assert amit.patch(f"/api/dealers/{d.id}/", {"name": "Hacked"}, format="json").status_code == 403
+    phone = Dealer.objects.get(pk=d.pk).phone
+    amit = api(w["au"])  # the new owner after the transfer
+    assert amit.patch(f"/api/dealers/{d.id}/", {"phone": "9000099999"}, format="json").status_code == 403
+    assert amit.patch(f"/api/dealers/{d.id}/", {"name": "Sharma Auto Care", "phone": "9000099999"}, format="json").status_code == 403
+    # The previous owner lost the right to edit along with the dealer.
+    assert api(w["ru"]).patch(f"/api/dealers/{d.id}/", {"name": "Hacked"}, format="json").status_code in (403, 404)
+    assert Dealer.objects.get(pk=d.pk).name == "Sharma Auto"
     assert amit.post(f"/api/dealers/{d.id}/transfer/", {"salesman_id": w["bina"].id}, format="json").status_code == 403
     assert amit.post(f"/api/dealers/{d.id}/grants/", {"salesman_id": w["bina"].id}, format="json").status_code == 403
     assert amit.post(TRANSFER, {"mode": "owner_state", "owner_id": w["amit"].id, "state": "Maharashtra", "to_salesman_id": w["bina"].id}, format="json").status_code == 403
@@ -316,7 +321,10 @@ def test_salesman_cannot_edit_a_dealer_or_its_order_history(w, maharashtra):
         # Neither the previous salesman's visits nor the viewer's own can be rewritten or removed.
         for pk in (maharashtra["v_pune1"].pk, maharashtra["v_bina"].pk):
             assert getattr(amit, method)(f"/api/salesman/visits/{pk}/", {"notes": "x"}, format="json").status_code == 405
-    assert Dealer.objects.get(pk=d.pk).name == "Sharma Auto"
+    # The owner may correct the name; that never touches the phone or any recorded visit and order line.
+    assert amit.patch(f"/api/dealers/{d.id}/", {"name": "Sharma Auto Care"}, format="json").status_code == 200
+    now = Dealer.objects.get(pk=d.pk)
+    assert now.name == "Sharma Auto Care" and now.phone == phone
     assert snapshot() == before
 
 

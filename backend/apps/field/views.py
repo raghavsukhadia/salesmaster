@@ -24,11 +24,11 @@ def policy_payload(cfg: FieldConfig) -> dict:
         "ping_interval_s": cfg.ping_interval_s,
         "retention_days": cfg.retention_days,
         "notice": [
-            "Your location is recorded only between Start duty and End duty. Nothing is recorded when you are off duty.",
+            "Duty starts automatically when you open the salesman app. With browser location access, recording runs while you use the app and are on duty.",
             "Your managers and administrators can see your latest location and today's route while you are on duty.",
             f"Location points are deleted after {cfg.retention_days} days.",
             "Each time a manager opens your route history, it is logged.",
-            "This web app can only record while it is open on your phone. Keep it open and allow location access.",
+            "This web app can only record while it is open on your phone. Sign out to end duty and stop location recording on this phone.",
         ],
     }
 

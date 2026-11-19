@@ -228,7 +228,8 @@ def test_full_duty_flow_over_http(sam):
 
     st = c.get("/api/field/session/").data
     assert st["session"]["ping_count"] == 2 and st["session"]["last_fix"]["accuracy_m"] in (10.0, 7.0)
-    assert any("Start duty" in line for line in st["policy"]["notice"])
+    assert any("starts automatically" in line for line in st["policy"]["notice"])
+    assert any("Sign out" in line for line in st["policy"]["notice"])
 
     r = c.post("/api/field/session/end/")
     assert r.data["on_duty"] is False and r.data["tracking"]["status"] == "off_duty"

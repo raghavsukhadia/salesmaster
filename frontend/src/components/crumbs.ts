@@ -21,12 +21,11 @@ const STATIC: Record<string, Crumb[]> = {
   '/dealers/transfer': [{ label: 'Management' }, { label: 'Transfer Area' }],
   '/my-dealers': [{ label: 'My Dealers' }],
   '/dealer-locations': [{ label: 'Management' }, { label: 'Dealer Locations' }],
-  '/field-settings': [{ label: 'Management' }, { label: 'Field Settings' }],
   '/field-map': [{ label: 'Live Salesman Tracking' }],
+  '/settings': [{ label: 'Settings' }],
   '/record-visit': [{ label: 'Record Visit' }],
   '/visit-history': [{ label: 'Visit History' }],
   '/followups': [{ label: 'Follow-ups' }],
-  '/field': [{ label: 'Field Duty' }],
 }
 
 const DETAIL: [RegExp, Crumb, (id: string) => string][] = [

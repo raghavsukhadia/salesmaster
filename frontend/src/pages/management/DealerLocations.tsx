@@ -116,19 +116,19 @@ export default function DealerLocations() {
       </div>
       <SearchBox value={q} onChange={(v) => { setQ(v); setPage(1) }} placeholder="Search by name, shop, phone, city or pincode" />
       {note && <p role="alert" className="mb-3 text-sm text-red-600">{note}</p>}
-      <Table loading={loading} error={error} empty={data?.results.length === 0}
+      <Table stack loading={loading} error={error} empty={data?.results.length === 0}
         head={[{ label: 'Dealer' }, { label: 'Address' }, { label: 'Territory' }, { label: 'Contact' }, { label: 'Location' }, { label: 'Status' }, { label: '', right: true }]}>
         {data?.results.map((r) => (
           <tr key={r.id} className="align-top">
             <td className="px-3 py-3"><Link to={`/dealers/${r.id}`} className="font-semibold hover:underline">{r.name}</Link><div className="text-xs text-slate-500">{r.phone || 'No phone'}</div></td>
-            <td className="max-w-[16rem] truncate px-3 py-3 text-slate-600" title={r.address}>{[r.address, r.city, r.pincode].filter(Boolean).join(', ') || '—'}</td>
+            <td className="px-3 py-3 text-slate-600 sm:max-w-[16rem] sm:truncate" title={r.address}>{[r.address, r.city, r.pincode].filter(Boolean).join(', ') || '—'}</td>
             <td className="px-3 py-3 text-slate-600">{[r.territory.city, r.territory.state].filter(Boolean).join(', ') || '—'}<div className="text-xs text-slate-500">{r.territory.covered_by.length ? `Covered by ${r.territory.covered_by.join(', ')}` : 'No salesman territory'}</div></td>
             <td className="px-3 py-3 text-slate-600">{r.contact ? <>{r.contact.name}<div className="text-xs text-slate-500">{r.contact.phone}</div></> : '—'}</td>
             <td className="px-3 py-3 font-mono text-xs text-slate-600">
               {r.has_location ? <>{r.latitude?.toFixed(5)}, {r.longitude?.toFixed(5)}<div className="font-sans text-slate-500">{fmtAccuracy(r.accuracy_m)}{r.source ? ` · ${r.source.replace('_', ' ')}` : ''}</div></> : '—'}
             </td>
             <td className="px-3 py-3">{!r.has_location ? <Badge tone="red">No location</Badge> : r.verified ? <span title={`${r.verified_by ?? ''}`}><Badge tone="green">Verified</Badge></span> : <Badge tone="gray">Unverified</Badge>}</td>
-            <td className="px-3 py-3 text-right whitespace-nowrap">
+            <td className="px-3 py-3 text-left sm:text-right sm:whitespace-nowrap">
               {r.has_location && !r.verified && <Button variant="secondary" size="sm" className="mr-2" onClick={() => void verify(r)}>Verify as is</Button>}
               <Button variant="secondary" size="sm" onClick={() => setEditing(r)}>{r.has_location ? 'Edit' : 'Set location'}</Button>
             </td>

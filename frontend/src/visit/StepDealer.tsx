@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowRight, CircleAlert, MapPin, ScanLine, Store, TextCursorInput } from 'lucide-react'
 import { api, ApiError } from '../auth'
 import { Button, Card, Field, fieldErrors, StateSelect } from '../components/ui'
-import { freshReading, gpsMessage } from '../field/gps.ts'
+import { GOOD_FIX_M, gpsMessage, isFresh, quickReading, type Reading } from '../field/gps.ts'
+import { tracker } from '../field/useTracker'
 import { CardImageError, readCard } from './cardOcr.ts'
 import { parseCard, type CardField } from './cardParser.ts'
-import { draftPayload, EMPTY_DRAFT, hasLocation, LOCATION_KEYS, validateDraft, type DealerDraft } from './dealerDraft.ts'
+import { CARD_DRAFT_KEYS, draftPayload, EMPTY_DRAFT, hasLocation, LOCATION_KEYS, validateDraft, type DealerDraft } from './dealerDraft.ts'
 import DealerPicker from './DealerPicker'
 import ScanPanel from './ScanPanel'
+import { addShot, removeShot } from './scanShots.ts'
 import type { Chosen, DealerLite, DealerMode, DealerState } from './types.ts'
 
 const TABS: { mode: DealerMode; label: string; icon: typeof ScanLine }[] = [
@@ -21,20 +23,32 @@ type Update = (patch: Partial<DealerState> | ((s: DealerState) => Partial<Dealer
 /** Fields read off the card are tinted so the salesman knows which values to double-check. */
 const tint = (filled: Set<CardField>, k: CardField) => (filled.has(k) ? 'bg-accent-soft!' : '') // "!": the input's own bg-white would otherwise win
 
-/** A fix this rough is probably indoors or on cell towers; still accepted, but the salesman is told. */
-const ROUGH_FIX_M = 100
 
 /** "Detect current location": one tap takes a fresh GPS fix at the shop and keeps it on the draft. Saved with the dealer, unverified. */
-function LocationField({ draft, set }: { draft: DealerDraft; set: (k: keyof DealerDraft, v: string) => void }) {
+function LocationField({ draft, set, error }: { draft: DealerDraft; set: (k: keyof DealerDraft, v: string) => void; error?: string }) {
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState('')
   const has = hasLocation(draft)
   const accuracy = Number(draft.location_accuracy_m)
 
+  // Warm the GPS as soon as the form opens (only if location is already allowed, so no surprise prompt),
+  // so the button usually answers instantly instead of waiting for a cold fix.
+  const warm = useRef<Reading | null>(null)
+  useEffect(() => {
+    let live = true
+    navigator.permissions?.query({ name: 'geolocation' }).then((s) => {
+      if (live && s.state === 'granted') quickReading({ latest: tracker.getState().position }).then((r) => { if (live) warm.current = r }, () => {})
+    }, () => {})
+    return () => { live = false }
+  }, [])
+
   async function detect() {
     setBusy(true); setProblem('')
     try {
-      const r = await freshReading(null) // null: never reuse the duty tracker's older fix, this must be where the salesman stands now
+      const w = warm.current
+      warm.current = null
+      // Fast: uses the warmed or tracker fix when it is under 15 s old, so it is still where the salesman stands.
+      const r = w && w.accuracy_m <= GOOD_FIX_M && isFresh(Date.parse(w.captured_at)) ? w : await quickReading({ latest: tracker.getState().position })
       set('latitude', r.latitude.toFixed(6)); set('longitude', r.longitude.toFixed(6)); set('location_accuracy_m', String(r.accuracy_m))
     } catch (e) {
       setProblem(gpsMessage(e))
@@ -44,9 +58,9 @@ function LocationField({ draft, set }: { draft: DealerDraft; set: (k: keyof Deal
   }
 
   return (
-    <div className="sm:col-span-2 rounded-lg border bg-slate-50 p-3 sm:p-4">
-      <p className="text-sm font-medium text-slate-700">Shop location</p>
-      <p className="mt-0.5 text-xs text-slate-500">Tap this while you are at the shop. Your manager can verify the location later.</p>
+    <div id="shop-location" className={`sm:col-span-2 rounded-lg border p-3 sm:p-4 ${error && !has ? 'border-red-300 bg-red-50' : 'bg-slate-50'}`}>
+      <p className="text-sm font-medium text-slate-700">Shop location <span className="text-red-600" aria-hidden>*</span></p>
+      <p className="mt-0.5 text-xs text-slate-500">Required. Tap this while you are at the shop. Your manager sees where and when it was captured.</p>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button variant="secondary" onClick={detect} loading={busy}>
           {!busy && <MapPin size={16} aria-hidden />}{busy ? 'Detecting…' : has ? 'Detect again' : 'Detect current location'}
@@ -59,10 +73,11 @@ function LocationField({ draft, set }: { draft: DealerDraft; set: (k: keyof Deal
             Location captured ({Number(draft.latitude).toFixed(5)}, {Number(draft.longitude).toFixed(5)}){Number.isFinite(accuracy) && draft.location_accuracy_m && `, accurate to about ${Math.round(accuracy)} m`}
           </p>
         )}
-        {has && !busy && !problem && accuracy > ROUGH_FIX_M && (
+        {has && !busy && !problem && accuracy > GOOD_FIX_M && ( // a fix this rough is probably indoors or on cell towers: still accepted, but the salesman is told
           <p className="mt-1 text-xs text-amber-700">This reading is rough. Step outside or near a window and tap Detect again for a better one.</p>
         )}
-        {problem && <p className="mt-3 text-sm text-red-700">{problem} You can still continue without it.</p>}
+        {problem && <p className="mt-3 text-sm text-red-700">{problem} The shop location is required to continue.</p>}
+        {error && !has && !problem && !busy && <p role="alert" className="mt-3 text-sm font-medium text-red-700">{error}</p>}
       </div>
     </div>
   )
@@ -74,21 +89,16 @@ function DealerFields({ draft, set, errors, filled }: { draft: DealerDraft; set:
   )
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      <div className="sm:col-span-2"><Field label="Dealer / shop name *" error={errors.name}>{text('name', { autoComplete: 'off', maxLength: 200 })}</Field></div>
-      <Field label="Contact person" error={errors.contact_name}>{text('contact_name', { autoComplete: 'off', maxLength: 120 })}</Field>
-      <Field label="Phone" error={errors.phone} hint="Unique 10-digit mobile; dealer names may repeat">{text('phone', { type: 'tel', inputMode: 'tel', autoComplete: 'off', maxLength: 20 })}</Field>
-      <Field label="WhatsApp" error={errors.whatsapp}>{text('whatsapp', { type: 'tel', inputMode: 'tel', autoComplete: 'off', maxLength: 20 })}</Field>
-      <Field label="GST number" error={errors.gst_number}>
-        {(p) => <input {...p} maxLength={15} autoComplete="off" value={draft.gst_number} onChange={(e) => set('gst_number', e.target.value.toUpperCase())} className={`${p.className} ${tint(filled, 'gst_number')}`} />}
-      </Field>
-      <Field label="City" error={errors.city}>{text('city', { autoComplete: 'off', maxLength: 80 })}</Field>
-      <Field label="State" error={errors.state}>
+      <div className="sm:col-span-2"><Field label="Business name *" error={errors.name}>{text('name', { autoComplete: 'off', maxLength: 200 })}</Field></div>
+      <Field label="Phone *" error={errors.phone} hint="Unique 10-digit mobile; dealer names may repeat">{text('phone', { type: 'tel', inputMode: 'tel', autoComplete: 'off', maxLength: 20 })}</Field>
+      <Field label="City *" error={errors.city}>{text('city', { autoComplete: 'off', maxLength: 80 })}</Field>
+      <Field label="State *" error={errors.state}>
         {(p) => <StateSelect id={p.id} value={draft.state} onChange={(v) => set('state', v)} className={`${p.className} ${tint(filled, 'state')}`} />}
       </Field>
-      <Field label="Pincode" error={errors.pincode}>{text('pincode', { inputMode: 'numeric', maxLength: 6, autoComplete: 'off' })}</Field>
-      <LocationField draft={draft} set={set} />
+      <Field label="Pincode *" error={errors.pincode}>{text('pincode', { inputMode: 'numeric', maxLength: 6, autoComplete: 'off' })}</Field>
+      <LocationField draft={draft} set={set} error={errors.location} />
       <div className="sm:col-span-2">
-        <Field label="Address" error={errors.address}>
+        <Field label="Address *" error={errors.address}>
           {(p) => <textarea {...p} rows={2} value={draft.address} onChange={(e) => set('address', e.target.value)} className={`${p.className} h-auto py-2 ${tint(filled, 'address')}`} />}
         </Field>
       </div>
@@ -103,18 +113,15 @@ export default function StepDealer({ state, update, onContinue }: { state: Deale
   const [checking, setChecking] = useState(false)
   const [duplicate, setDuplicate] = useState<DealerLite | null>(null)
   const abort = useRef<AbortController | null>(null)
-  const lastUrl = useRef<string | undefined>(undefined)
 
-  // Leaving the screen stops a scan in progress and releases the photo.
-  useEffect(() => () => {
-    abort.current?.abort()
-    if (lastUrl.current) URL.revokeObjectURL(lastUrl.current)
-  }, [])
+  // Leaving the screen stops a scan in progress.
+  useEffect(() => () => { abort.current?.abort() }, [])
 
   const filled = new Set<CardField>(scan.filled ?? [])
   const set = (k: keyof DealerDraft, v: string) => {
     update((s) => ({ draft: { ...s.draft, [k]: v } }))
-    if (errors[k] || errors._) setErrors((e) => ({ ...e, [k]: '', _: '' }))
+    const loc = (LOCATION_KEYS as readonly string[]).includes(k)
+    if (errors[k] || errors._ || (loc && errors.location)) setErrors((e) => ({ ...e, [k]: '', _: '', ...(loc && { location: '' }) }))
     setDuplicate(null)
   }
 
@@ -125,26 +132,36 @@ export default function StepDealer({ state, update, onContinue }: { state: Deale
     setErrors({}); setNote(''); setDuplicate(null)
   }
 
-  function newPreview(photo: Blob) {
-    if (lastUrl.current) URL.revokeObjectURL(lastUrl.current)
-    lastUrl.current = URL.createObjectURL(photo)
-    return lastUrl.current
+  /** A card photo arrived (camera or upload). The card is read as soon as it has both its photos. */
+  function addPhoto(photo: Blob) {
+    const { shots, ready } = addShot(scan.shots, photo)
+    setErrors({}); setNote(''); setDuplicate(null)
+    if (!ready) return update({ scan: { phase: 'idle', shots } })
+    void readPhotos(shots)
   }
 
-  async function scanPhoto(photo: Blob) {
+  async function readPhotos(shots: Blob[]) {
     abort.current?.abort()
     const ctl = new AbortController()
     abort.current = ctl
-    const previewUrl = newPreview(photo)
-    setErrors({}); setNote(''); setDuplicate(null)
-    update({ scan: { phase: 'reading', previewUrl, progress: { stage: 'preparing', progress: 0 } } })
+    update({ scan: { phase: 'reading', shots, readingPhoto: 1, progress: { stage: 'preparing', progress: 0 } } })
     try {
-      const text = await readCard(photo, { signal: ctl.signal, onProgress: (progress) => { if (!ctl.signal.aborted) update((s) => ({ scan: { ...s.scan, progress } })) } })
-      if (ctl.signal.aborted) return
+      // Front then back, one after the other; the text of both is parsed together.
+      const parts: string[] = []
+      for (const [i, shot] of shots.entries()) {
+        const part = await readCard(shot, {
+          signal: ctl.signal,
+          onProgress: (progress) => { if (!ctl.signal.aborted) update((s) => ({ scan: { ...s.scan, progress, readingPhoto: i + 1 } })) },
+        })
+        if (ctl.signal.aborted) return
+        parts.push(part)
+      }
+      const text = parts.join('\n')
       const found = parseCard(text)
-      const keys = (Object.keys(found) as CardField[]).filter((k) => found[k])
+      const keys = CARD_DRAFT_KEYS.filter((k) => found[k])
       if (!keys.length) {
-        update({ scan: { phase: 'error', previewUrl, text, message: 'No dealer details could be read from this photo. Try again in better light with the card filling the frame, or enter the details by hand.' } })
+        // Start over from photo 1: the photos that could not be read are dropped.
+        update({ scan: { phase: 'error', shots: [], text, message: 'No dealer details could be read from these photos. Try again in better light with the card filling the frame, or enter the details by hand.' } })
         return
       }
       update((s) => {
@@ -153,11 +170,11 @@ export default function StepDealer({ state, update, onContinue }: { state: Deale
         const base = s.scan.phase === 'done' || s.scan.filled ? { ...EMPTY_DRAFT, ...Object.fromEntries(LOCATION_KEYS.map((k) => [k, s.draft[k]])) } : s.draft
         const next = { ...base }
         for (const k of keys) if (!base[k]) next[k] = found[k]
-        return { draft: next, scan: { phase: 'done', previewUrl, text, filled: keys } }
+        return { draft: next, scan: { phase: 'done', shots, text, filled: keys } }
       })
     } catch (e) {
       if (ctl.signal.aborted) return
-      update({ scan: { phase: 'error', previewUrl, message: e instanceof CardImageError ? e.message : 'The card could not be read. Try again, or enter the details by hand.' } })
+      update({ scan: { phase: 'error', shots: [], message: e instanceof CardImageError ? e.message : 'The card could not be read. Try again, or enter the details by hand.' } })
     }
   }
 
@@ -167,7 +184,7 @@ export default function StepDealer({ state, update, onContinue }: { state: Deale
       if (!selected) return setNote('Select one of your dealers to continue.')
       return onContinue({ kind: 'existing', dealer: selected })
     }
-    if (mode === 'scan' && scan.phase !== 'done') return setNote('Take or upload a photo of the card first, or use Enter Manually.')
+    if (mode === 'scan' && scan.phase !== 'done') return setNote('Take both photos of the card (front and back) first, or use Enter Manually.')
     const bad = validateDraft(draft)
     if (Object.keys(bad).length) return setErrors(bad)
     setChecking(true)
@@ -193,9 +210,8 @@ export default function StepDealer({ state, update, onContinue }: { state: Deale
   return (
     <Card className="p-4 sm:p-6">
       <h2 className="text-lg font-semibold text-slate-900">Dealer details</h2>
-      <p className="mt-0.5 text-sm text-slate-500">Who are you visiting? Scan their card, type the details, or pick a dealer you already have.</p>
 
-      <div role="tablist" aria-label="How to identify the dealer" className="mt-5 grid grid-cols-3 gap-2">
+      <div role="tablist" aria-label="How to identify the dealer" className="mt-4 grid grid-cols-3 gap-2">
         {TABS.map(({ mode: m, label, icon: Icon }) => (
           <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => setMode(m)}
             className={`flex min-h-[3.25rem] flex-col items-center justify-center gap-1 rounded-lg border px-2 py-2 text-xs font-medium transition-colors sm:flex-row sm:gap-2 sm:text-sm ${
@@ -207,11 +223,12 @@ export default function StepDealer({ state, update, onContinue }: { state: Deale
 
       <div role="tabpanel" className="mt-5 space-y-5">
         {mode === 'scan' && (
-          <ScanPanel scan={scan} onFile={scanPhoto}
+          <ScanPanel scan={scan} onFile={addPhoto}
+            onRemoveShot={(i) => update((s) => ({ scan: { ...s.scan, shots: removeShot(s.scan.shots, i) } }))}
             onCameraOpen={() => update((s) => ({ scan: { ...s.scan, phase: 'camera', message: undefined } }))}
             onCameraClosed={() => update((s) => ({ scan: { ...s.scan, phase: s.scan.filled ? 'done' : 'idle' } }))}
             onCameraFailed={(message, cameraProblem) => update((s) => ({ scan: { ...s.scan, phase: 'error', message, cameraProblem } }))}
-            onReset={() => update((s) => ({ scan: { phase: 'idle', previewUrl: s.scan.previewUrl } }))} />
+            onReset={() => update({ scan: { phase: 'idle' } })} />
         )}
 
         {mode === 'scan' && scan.phase === 'done' && (

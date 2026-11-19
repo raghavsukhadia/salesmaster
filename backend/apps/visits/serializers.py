@@ -57,6 +57,9 @@ class FollowupSerializer(serializers.Serializer):
     due_time = serializers.TimeField(required=False, allow_null=True)
     priority = serializers.ChoiceField(choices=Followup.Priority.choices, required=False)
     notes = serializers.CharField(required=False, allow_blank=True)
+    # What the salesman will do ("call_dealer", ..., "other"). Optional here: check-ins and older clients send none.
+    action = serializers.ChoiceField(choices=Followup.Action.choices, required=False)
+    action_text = serializers.CharField(max_length=200, required=False, allow_blank=True)
 
     def validate_due_date(self, value):
         if value < timezone.localdate():
@@ -65,6 +68,13 @@ class FollowupSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         check_time_not_past(attrs["due_date"], attrs.get("due_time"))
+        text = attrs.get("action_text", "").strip()
+        if attrs.get("action") == Followup.Action.OTHER:
+            if not text:
+                raise serializers.ValidationError({"action_text": "Say what you will do"})
+            attrs["action_text"] = text
+        else:
+            attrs.pop("action_text", None)  # only "other" carries free text
         return attrs
 
 
@@ -103,6 +113,10 @@ class RecordVisitSerializer(serializers.Serializer):
     def validate(self, attrs):
         if bool(attrs.get("dealer_id")) == bool(attrs.get("new_dealer")):
             raise serializers.ValidationError("Provide exactly one of dealer_id or new_dealer")
+        # A new dealer is only created with the shop's GPS location, taken by the salesman at the shop.
+        new = attrs.get("new_dealer")
+        if new and (new.get("latitude") is None or new.get("longitude") is None):
+            raise serializers.ValidationError({"new_dealer": {"location": "Detect the shop location before saving a new dealer."}})
         if (attrs.get("latitude") is None) != (attrs.get("longitude") is None):
             raise serializers.ValidationError("latitude and longitude must be provided together")
         has_items = bool(attrs.get("order_items"))

@@ -41,6 +41,7 @@ def create_followup(user, data) -> Followup:
         f = Followup.objects.create(
             dealer=dealer, salesman=salesman, due_date=data["due_date"], due_time=data.get("due_time"),
             priority=data.get("priority", Followup.Priority.MEDIUM), notes=data.get("notes", "").strip(),
+            action=data.get("action", ""), action_text=data.get("action_text", ""),
         )
         soonest = Followup.objects.filter(dealer=dealer, status=Followup.Status.PENDING).aggregate(d=Min("due_date"))["d"]
         dealer.next_followup_at = soonest

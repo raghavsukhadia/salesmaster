@@ -34,3 +34,6 @@ export const localDate = (offsetDays = 0) => {
   d.setDate(d.getDate() + offsetDays)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
+
+/** The device's current local time as "HH:MM" (24-hour), the value a time input and the follow-up API expect. */
+export const localTime = (now = new Date()) => `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`
