@@ -48,7 +48,7 @@ export default function Settings() {
       <PageHeader title="Settings" />
       <Card className="max-w-lg p-4 sm:p-6">
         <h2 className="text-lg font-semibold text-slate-900">Change password</h2>
-        <p className="mt-0.5 text-sm text-slate-500">Use at least 8 characters. Any other device where you are signed in will be signed out.</p>
+        <p className="mt-0.5 text-sm text-slate-500">Use at least 8 characters.</p>
         <form onSubmit={submit} noValidate className="mt-5 space-y-4">
           {note && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{note}</p>}
           <Field label="Current password" error={errors.current}>

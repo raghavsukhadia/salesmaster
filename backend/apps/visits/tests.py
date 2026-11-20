@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, Salesman, User
+from apps.dealers.access import CREATED_VIA_VISIT
 from apps.dealers.models import Dealer, DealerAccessGrant, DealerOwnershipHistory
 from apps.visits.models import Followup, Product, Visit, VisitOrderItem
 
@@ -312,11 +313,23 @@ def test_dealer_search_scoped_to_access(sm, other):
     user, salesman = sm
     _, bob = other
     mine = Dealer.objects.create(name="Alpha Motors")
+    assigned = Dealer.objects.create(name="Alpha Imported")
     theirs = Dealer.objects.create(name="Alpha Hidden")
-    DealerOwnershipHistory.objects.create(dealer=mine, salesman=salesman)
-    DealerOwnershipHistory.objects.create(dealer=theirs, salesman=bob)
+    DealerOwnershipHistory.objects.create(dealer=mine, salesman=salesman, reason=CREATED_VIA_VISIT)
+    DealerOwnershipHistory.objects.create(dealer=assigned, salesman=salesman, reason="Imported")
+    DealerOwnershipHistory.objects.create(dealer=theirs, salesman=bob, reason=CREATED_VIA_VISIT)
     r = client_for(user).get("/api/salesman/dealers/", {"q": "alpha"})
+    # Only dealers the salesman added; an admin-assigned (imported) dealer is not listed even though they own it.
     assert [d["name"] for d in r.data] == ["Alpha Motors"]
+
+
+def test_dealer_search_drops_self_added_dealer_after_transfer(sm, other):
+    user, salesman = sm
+    _, bob = other
+    d = Dealer.objects.create(name="Moved Motors")
+    DealerOwnershipHistory.objects.create(dealer=d, salesman=salesman, reason=CREATED_VIA_VISIT, ended_at=timezone.now())
+    DealerOwnershipHistory.objects.create(dealer=d, salesman=bob, reason="Transfer")
+    assert client_for(user).get("/api/salesman/dealers/", {"q": "moved"}).data == []
 
 
 def test_product_list_active_only_and_searchable(sm):

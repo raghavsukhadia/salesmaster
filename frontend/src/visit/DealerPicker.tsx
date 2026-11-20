@@ -36,10 +36,8 @@ export default function DealerPicker({ selected, onSelect }: { selected: DealerL
         </p>
       )}
       {loading && !data && <p role="status" className="text-sm text-slate-500">Searching…</p>}
-      {data && data.length === 0 && (
-        <p className="rounded-lg border border-dashed p-4 text-center text-sm text-slate-500">
-          {dq ? 'No dealer of yours matches that.' : 'You have no dealers yet.'} Use Scan Card or Enter Manually to add one.
-        </p>
+      {data && data.length === 0 && dq && (
+        <p className="rounded-lg border border-dashed p-4 text-center text-sm text-slate-500">No dealer of yours matches that.</p>
       )}
       {data && data.length > 0 && (
         <ul className={`divide-y overflow-hidden rounded-xl border bg-white ${loading ? 'opacity-60' : ''}`}>

@@ -120,3 +120,21 @@ def test_only_admins_can_import_and_the_file_must_be_usable(w):
     _, gone = mk("gone", active=False)
     assert c.post(URL, {"file": csv_file("Name\nX\n"), "salesman_id": gone.id}, format="multipart").status_code == 400
     assert not Dealer.objects.exists()
+
+
+def test_null_placeholders_in_the_file_are_stored_as_blank(w):
+    f = csv_file("Name,Phone,City,State,Pincode\nK K Auto,9000000011,Nanded,null\nZyan Car,9000000012,NULL,N/A,nan\n")
+    r = client(w["admin"]).post(URL, {"file": f}, format="multipart")
+    assert r.data["created"] == 2, r.data
+    kk = Dealer.objects.get(name="K K Auto")
+    assert kk.city == "Nanded" and kk.state == ""
+    zy = Dealer.objects.get(name="Zyan Car")
+    assert zy.city == "" and zy.state == "" and zy.pincode == ""
+
+
+def test_dealer_list_can_hide_the_ones_a_salesman_already_owns(w):
+    f = csv_file("Name,Phone,Salesman\nMine,9000000021,demo\nTheirs,9000000022,ravi\nNobody's,9000000023,\n")
+    client(w["admin"]).post(URL, {"file": f}, format="multipart")
+    r = client(w["admin"]).get("/api/management/dealers/", {"not_owner": w["demo"].id})
+    assert {row["name"] for row in r.data["results"]} == {"Theirs", "Nobody's"}
+    assert r.data["count"] == 2

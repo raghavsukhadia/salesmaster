@@ -37,12 +37,17 @@ def _key(header_cell) -> str:
     return re.sub(r"[^a-z0-9]", "", str(header_cell or "").lower())
 
 
+# Placeholders spreadsheets and exports use for "no value". Stored as-is they show up as "Nanded, null".
+BLANKS = {"null", "none", "nan", "n/a", "#n/a"}
+
+
 def _text(v) -> str:
     if v is None:
         return ""
     if isinstance(v, float) and v.is_integer():  # Excel hands back 9876543210 as 9876543210.0
         v = int(v)
-    return " ".join(str(v).split())
+    s = " ".join(str(v).split())
+    return "" if s.lower() in BLANKS else s
 
 
 def _salesman_lookup() -> dict:

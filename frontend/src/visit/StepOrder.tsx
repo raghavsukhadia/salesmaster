@@ -6,7 +6,7 @@ import { gpsMessage, quickReading } from '../field/gps.ts'
 import { tracker } from '../field/useTracker'
 import { draftPayload, hasLocation } from './dealerDraft.ts'
 import { fmtDue, localDate } from './format.ts'
-import { toOrderItems, UNITS, type OrderLine, type Unit } from './orderMath.ts'
+import { fmtPaise, lineTotalPaise, orderTotalPaise, priceError, toOrderItems, UNITS, type OrderLine, type Unit } from './orderMath.ts'
 import { dueDateFor, EMPTY_NEXT_STEP, NEXT_ACTIONS, nextStepFollowup, nextStepProblems, NOTE_MAX, TEXT_MAX, WHEN_OPTIONS, type NextStep } from './nextStep.ts'
 import type { Chosen, DealerLite } from './types.ts'
 
@@ -137,6 +137,7 @@ export default function StepOrder({ chosen, order, setOrder, requestId, onBack, 
   function problems(): string[] {
     const out: string[] = []
     if (hasOrder && lines.length === 0) out.push('Add at least one product to the order, or choose “No order”.')
+    if (hasOrder) for (const l of lines) if (priceError(l.unit_price)) out.push(`Fix the price of ${l.product_name}: enter an amount like 1250 or 1250.50.`)
     out.push(...nextStepProblems(next))
     return out
   }
@@ -234,7 +235,7 @@ export default function StepOrder({ chosen, order, setOrder, requestId, onBack, 
                         <button type="button" aria-label={`Remove ${l.product_name}`} onClick={() => setOrder((o) => ({ ...o, lines: o.lines.filter((x) => x.key !== l.key) }))}
                           className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 size={16} aria-hidden /></button>
                       </div>
-                      <div className="mt-2 grid grid-cols-[auto_1fr] gap-2 sm:grid-cols-[auto_8rem]">
+                      <div className="mt-2 grid grid-cols-[auto_1fr] gap-2 sm:grid-cols-[auto_8rem_10rem]">
                         <div>
                           <span className={lbl}>Quantity</span>
                           <div className="flex h-10 items-center overflow-hidden rounded-lg border bg-white">
@@ -251,10 +252,25 @@ export default function StepOrder({ chosen, order, setOrder, requestId, onBack, 
                             {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
                           </select>
                         </div>
+                        <div className="col-span-2 sm:col-span-1">
+                          <label htmlFor={`p-${l.key}`} className={lbl}>Price per {l.unit} <span className="font-normal text-slate-500">(optional)</span></label>
+                          <div className="relative">
+                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500" aria-hidden>₹</span>
+                            <input id={`p-${l.key}`} inputMode="decimal" autoComplete="off" placeholder="0.00" value={l.unit_price} maxLength={18}
+                              aria-invalid={!!priceError(l.unit_price)} aria-describedby={priceError(l.unit_price) ? `pe-${l.key}` : undefined}
+                              onChange={(e) => setLine(l.key, { unit_price: e.target.value })}
+                              className={`${input} pl-7 tabular-nums ${priceError(l.unit_price) ? 'border-red-400' : ''}`} />
+                          </div>
+                        </div>
                       </div>
+                      {priceError(l.unit_price) ? <p id={`pe-${l.key}`} className="mt-1.5 text-xs text-red-700">{priceError(l.unit_price)}</p>
+                        : lineTotalPaise(l) > 0 && <p className="mt-1.5 text-right text-xs text-slate-500">{l.quantity} × {fmtPaise(lineTotalPaise(l) / l.quantity)} = <span className="font-medium tabular-nums text-slate-900">{fmtPaise(lineTotalPaise(l))}</span></p>}
                     </li>
                 ))}
               </ul>
+            )}
+            {orderTotalPaise(lines) > 0 && (
+              <p className="flex items-center justify-between border-t pt-3 text-sm"><span className="text-slate-600">Order total</span><span className="font-semibold tabular-nums text-slate-900">{fmtPaise(orderTotalPaise(lines))}</span></p>
             )}
           </div>
         )}
@@ -273,10 +289,7 @@ export default function StepOrder({ chosen, order, setOrder, requestId, onBack, 
             </Button>
             {geo && !locBusy && <span role="status" className="text-sm text-green-700">Location captured ({geo.lat.toFixed(4)}, {geo.lng.toFixed(4)})</span>}
           </div>
-          {geoMsg && <p role="status" className="mt-2 text-sm text-red-700">{geoMsg}</p>}
-          {!geo && !geoMsg && place && <p className="mt-2 text-xs text-slate-500">The position you detected for this new dealer is saved as the visit location.</p>}
-          <p className="mt-2 text-xs text-slate-500">The location is saved with this visit and visible to your managers.</p>
-        </div>
+          {geoMsg && <p role="status" className="mt-2 text-sm text-red-700">{geoMsg}</p>}        </div>
       </Card>
 
       <Card className="p-4 sm:p-6">

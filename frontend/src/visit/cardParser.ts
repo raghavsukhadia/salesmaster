@@ -382,3 +382,57 @@ export function parseCard(raw: string): CardFields {
 
   return out
 }
+
+// ───────────────────────── several reads of one card ─────────────────────────
+
+/** One OCR read of the card (one image treatment or layout mode), already parsed, with the engine's mean confidence (0-100). */
+export interface CardRead { fields: CardFields; confidence: number }
+
+const sameValue = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+/**
+ * Combines several reads of the same card field by field. For each field, reads that agree pool their confidence and the
+ * best-supported value wins; a field only one read found is still taken. A GSTIN that passes its check character beats
+ * one that does not. Each read can catch what another missed (a header band, a faint address line), so the union is fuller
+ * than any single read, and agreement filters out a misread that only one read made.
+ */
+export function mergeCardReads(reads: readonly CardRead[]): CardFields {
+  const out: CardFields = { ...EMPTY_CARD }
+  for (const k of Object.keys(EMPTY_CARD) as CardField[]) {
+    let found = reads.filter((r) => r.fields[k])
+    if (k === 'gst_number' && found.some((r) => gstinChecksumOk(r.fields[k]))) found = found.filter((r) => gstinChecksumOk(r.fields[k]))
+    const groups = new Map<string, { weight: number; best: CardRead }>()
+    for (const r of found) {
+      const key = sameValue(r.fields[k])
+      const weight = Math.max(1, r.confidence)
+      const g = groups.get(key)
+      if (!g) groups.set(key, { weight, best: r })
+      else {
+        g.weight += weight
+        if (r.confidence > g.best.confidence) g.best = r
+      }
+    }
+    let top: { weight: number; best: CardRead } | undefined
+    for (const g of groups.values()) if (!top || g.weight > top.weight) top = g
+    if (top) out[k] = top.best.fields[k]
+  }
+  if (out.whatsapp === out.phone) out.whatsapp = ''
+  return out
+}
+
+/**
+ * The dealer fields from every read of every photo (front first, then the optional back). Read n of the front is paired with
+ * read n of the back (the same treatment) and parsed as one card; the pairs are then merged. `text` is the raw text of the
+ * most confident pair, kept so the salesman can see what the engine saw.
+ */
+export function parseCardReads(photos: readonly (readonly { text: string; confidence: number }[])[]): { fields: CardFields; text: string } {
+  const sides = photos.filter((p) => p.length)
+  if (!sides.length) return { fields: { ...EMPTY_CARD }, text: '' }
+  const n = Math.max(...sides.map((p) => p.length))
+  const pairs = Array.from({ length: n }, (_, i) => {
+    const picked = sides.map((p) => p[Math.min(i, p.length - 1)])
+    return { text: picked.map((p) => p.text).join('\n'), confidence: picked.reduce((s, p) => s + p.confidence, 0) / picked.length }
+  })
+  const best = pairs.reduce((a, b) => (b.confidence > a.confidence ? b : a))
+  return { fields: mergeCardReads(pairs.map((p) => ({ fields: parseCard(p.text), confidence: p.confidence }))), text: best.text }
+}

@@ -18,7 +18,7 @@ interface Props {
   placeholder?: string
 }
 
-/** A dropdown with a search box. The list always opens below the field, shows at most 100 matches, and is fully keyboard driven. */
+/** A dropdown with a search box. The list always opens below the field, shows every match, and is fully keyboard driven. */
 export default function SearchSelect({ label, value, selectedLabel, options, onChange, onQuery, allLabel = 'All', placeholder = 'Search…' }: Props) {
   const { open, setOpen, ref } = usePopover()
   const id = useId()
@@ -31,7 +31,7 @@ export default function SearchSelect({ label, value, selectedLabel, options, onC
   useEffect(() => { if (open) input.current?.focus() }, [open])
 
   const needle = q.trim().toLowerCase()
-  const shown = (onQuery ? options : options.filter((o) => o.label.toLowerCase().includes(needle))).slice(0, 100)
+  const shown = onQuery ? options : options.filter((o) => o.label.toLowerCase().includes(needle))
   const items: Opt[] = [{ value: '', label: allLabel }, ...shown]
   const current = value ? (selectedLabel ?? options.find((o) => o.value === value)?.label ?? value) : allLabel
 
@@ -44,7 +44,7 @@ export default function SearchSelect({ label, value, selectedLabel, options, onC
 
   return (
     <div ref={ref} className="relative flex flex-col gap-1 text-xs font-medium text-slate-600">
-      <span id={`${id}-l`}>{label}</span>
+      <label id={`${id}-l`} htmlFor={`${id}-b`}>{label}</label>
       <div className="relative">
         <button type="button" data-trigger aria-haspopup="listbox" aria-expanded={open} aria-labelledby={`${id}-l ${id}-b`} id={`${id}-b`}
           onClick={() => { setOpen(!open); setActive(0) }}

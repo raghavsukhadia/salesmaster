@@ -47,7 +47,7 @@ export default function FilterBar({ filters, options, setFilters }: Props) {
   const field = 'h-10 w-full rounded-lg border bg-white px-3 text-sm font-normal text-slate-900'
 
   return (
-    <section aria-label="Report filters" className="mb-6 rounded-xl border bg-white p-3 shadow-card print:hidden">
+    <section aria-label="Report filters" className="mb-6 rounded-xl border bg-white p-3 shadow-card print:hidden [&_label]:font-semibold [&_label]:text-slate-800">
       <div className="flex flex-wrap items-end gap-3">
         <div className="w-44">
           <DropdownSelect label="Period" value={filters.preset} onChange={choosePreset} options={PRESETS.map(([value, label]) => ({ value, label }))} />

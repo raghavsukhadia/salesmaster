@@ -49,11 +49,11 @@ test('rupees use Indian grouping and drop pointless decimals', () => {
 test('the request body carries product id or custom name, a unit, and a two-decimal price string', () => {
   const body = toOrderItems([
     line({ product_id: 7, product_name: 'Film A', quantity: 2, unit: 'roll', unit_price: '1,250.5' }),
-    line({ product_name: 'Custom tint', quantity: 1, unit: 'sq ft', unit_price: '' }),
+    line({ product_name: 'Custom tint', quantity: 1, unit: 'box', unit_price: '' }),
   ])
   assert.deepEqual(body, [
     { product_id: 7, quantity: 2, unit: 'roll', unit_price: '1250.50' },
-    { product_name: 'Custom tint', quantity: 1, unit: 'sq ft', unit_price: '0.00' },
+    { product_name: 'Custom tint', quantity: 1, unit: 'box', unit_price: '0.00' },
   ])
 })
 

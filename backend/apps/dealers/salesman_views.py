@@ -1,11 +1,14 @@
 """The salesman's dealer book: the areas they cover and the dealers in them. Read-only.
 
-Who may see a dealer is decided in one place (access.accessible_dealers: ownership + access grants), so when an
-admin transfers an area the new salesman gets exactly the transferred dealers here, and the previous one loses them.
+Only dealers the salesman added themselves (access.dealers_added_by) are listed: imported/assigned dealers, shared
+dealers and dealers transferred in from another salesman are left out. A self-added dealer that was later transferred
+away disappears, because dealers_added_by is still limited to what the salesman can access.
 Areas are derived from that same set, plus the planning territories an admin assigned, so a freshly assigned area
 shows up even before it holds a dealer. A dealer's order history is served by DealerTabView, with the name of the
 salesman who recorded each order.
 """
+
+from collections import Counter
 
 from django.db.models import Count, Q
 from rest_framework.response import Response
@@ -15,7 +18,7 @@ from apps.accounts.permissions import IsSalesman
 from apps.management.views import paginate
 from apps.visits.services import get_salesman
 
-from .access import accessible_dealers
+from .access import accessible_dealers, dealers_added_by
 from .models import DealerOwnershipHistory
 
 # `?state=` value that means "dealers with no state saved".
@@ -33,7 +36,7 @@ class SalesmanAreasView(APIView):
     def get(self, request):
         salesman = get_salesman(request.user)
         rows = (
-            accessible_dealers(request.user).filter(is_archived=False)
+            dealers_added_by(request.user).filter(is_archived=False)
             .values("state", "city")
             .annotate(dealers=Count("id", distinct=True), orders=orders_count())
             .order_by("state", "city")  # stable: when "Pune" and "pune" merge, the same spelling always wins
@@ -74,14 +77,14 @@ class SalesmanAreasView(APIView):
 
 
 class SalesmanDealerListView(APIView):
-    """Every dealer the salesman can see, newest transfers included, with how many orders each already has."""
+    """The dealers this salesman added themselves, with how many orders each already has."""
 
     permission_classes = [IsSalesman]
 
     def get(self, request):
         salesman = get_salesman(request.user)
         p = request.query_params
-        qs = accessible_dealers(request.user).filter(is_archived=False)
+        qs = dealers_added_by(request.user).filter(is_archived=False)
 
         state = p.get("state", "").strip()
         if state == NO_STATE:
@@ -111,3 +114,33 @@ class SalesmanDealerListView(APIView):
                 "mine": d.id in mine,
             } for d in page],
         })
+
+
+class SalesmanCitiesView(APIView):
+    """Cities already saved on the dealers this salesman can see, offered as suggestions when typing a new dealer's city.
+
+    "Nagpur", "nagpur " and "NAGPUR" are one city: the spelling and state used most often win."""
+
+    permission_classes = [IsSalesman]
+
+    def get(self, request):
+        rows = (
+            accessible_dealers(request.user).filter(is_archived=False).exclude(city="")
+            .values("city", "state").annotate(n=Count("id"))
+        )
+        spellings: dict[str, Counter] = {}
+        states: dict[str, Counter] = {}
+        for r in rows:
+            city = " ".join(r["city"].split())
+            if not city:
+                continue
+            key = city.lower()
+            spellings.setdefault(key, Counter())[city] += r["n"]
+            if r["state"].strip():
+                states.setdefault(key, Counter())[r["state"].strip()] += r["n"]
+        # A tie goes to the alphabetically first spelling, so the winner never flips between requests.
+        best = lambda c: max(sorted(c), key=c.__getitem__) if c else ""  # noqa: E731
+        return Response(sorted(
+            ({"city": best(spellings[k]), "state": best(states.get(k, Counter()))} for k in spellings),
+            key=lambda r: r["city"].lower(),
+        ))

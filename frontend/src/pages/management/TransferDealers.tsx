@@ -63,9 +63,8 @@ export default function TransferDealers() {
 
   return (
     <>
-      <PageHeader title="Transfer Area" subtitle="Hand a salesman's state, city or dealer to another salesman, with all existing dealer and order history." />
+      <PageHeader title="Transfer Area" />
       <div className="rounded-2xl border p-6">
-        <p role="note" className="mb-5 rounded-lg border bg-slate-50 p-3 text-sm text-slate-600">Existing orders keep their original salesman and stay read-only. The new salesman can see the transferred dealers and their complete order history in My Dealers. Future orders show the salesman who creates them.</p>
         {!admin && <AdminNotice />}
         {optErr && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">Could not load options. Please refresh.</p>}
         {done && <p role="status" className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-800">{done}</p>}

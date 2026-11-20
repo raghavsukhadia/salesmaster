@@ -10,6 +10,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, Salesman, SalesmanTerritory, User
+from apps.dealers.access import CREATED_VIA_VISIT
 from apps.dealers.models import Dealer, DealerAccessGrant, DealerOwnershipHistory
 from apps.visits.models import Followup, Visit, VisitOrderItem
 
@@ -31,10 +32,11 @@ def api(user):
     return c
 
 
-def dealer(name, owner=None, state="Maharashtra", city="Pune", **kw):
+def dealer(name, owner=None, state="Maharashtra", city="Pune", reason=CREATED_VIA_VISIT, **kw):
+    """A dealer the owner added themselves (pass reason="Imported" for one an admin assigned)."""
     d = Dealer.objects.create(name=name, state=state, city=city, **kw)
     if owner:
-        DealerOwnershipHistory.objects.create(dealer=d, salesman=owner)
+        DealerOwnershipHistory.objects.create(dealer=d, salesman=owner, reason=reason)
     return d
 
 
@@ -172,18 +174,14 @@ def test_state_transfer_moves_dealers_and_never_touches_past_orders(w, maharasht
         assert Visit.objects.get(pk=maharashtra[key].pk).salesman == w["rakesh"]
 
 
-def test_new_salesman_sees_every_dealer_with_old_orders_and_their_original_names(w, maharashtra):
+def test_new_salesman_owns_transferred_dealers_with_old_orders_and_their_original_names(w, maharashtra):
     move_maharashtra(w)
     amit = api(w["au"])
 
-    listing = amit.get("/api/salesman/dealer-list/").data
-    assert listing["count"] == 3
-    by_name = {d["name"]: d for d in listing["results"]}
-    assert set(by_name) == {"Sharma Auto", "Patil Motors", "Kapoor Films"}
-    assert by_name["Sharma Auto"]["orders"] == 1 and by_name["Kapoor Films"]["orders"] == 1
-    assert all(d["mine"] for d in listing["results"])
+    # My Dealers lists only dealers the salesman added themselves, so transferred-in dealers are not listed there...
+    assert amit.get("/api/salesman/dealer-list/").data["count"] == 0
 
-    # Each dealer's order history shows who originally took every order, and that it is not the viewer's.
+    # ...but the new owner can still open each one. Each dealer's order history shows who originally took every order, and that it is not the viewer's.
     orders = amit.get(f"/api/dealers/{maharashtra['pune1'].id}/orders/").data
     assert orders["count"] == 1
     row = orders["results"][0]
@@ -199,15 +197,31 @@ def test_new_salesman_sees_every_dealer_with_old_orders_and_their_original_names
     assert rakesh.get(f"/api/dealers/{maharashtra['pune1'].id}/orders/").status_code == 404
 
 
-def test_new_salesman_sees_the_assigned_area_with_cities_and_order_counts(w, maharashtra):
+def test_areas_show_self_added_dealers_with_cities_and_order_counts(w, maharashtra):
+    data = api(w["ru"]).get("/api/salesman/areas/").data
+    assert data["dealers"] == 4
+    mh = next(a for a in data["areas"] if a["state"] == "Maharashtra")
+    assert mh["key"] == "Maharashtra" and mh["dealers"] == 3 and mh["orders"] == 3
+    assert mh["cities"] == [{"city": "Mumbai", "dealers": 1}, {"city": "Pune", "dealers": 2}]
     move_maharashtra(w)
-    data = api(w["au"]).get("/api/salesman/areas/").data
-    assert data["dealers"] == 3
-    [area] = data["areas"]
-    assert area["state"] == "Maharashtra" and area["key"] == "Maharashtra" and area["dealers"] == 3 and area["orders"] == 3
-    assert area["cities"] == [{"city": "Mumbai", "dealers": 1}, {"city": "Pune", "dealers": 2}]
-    # Before the transfer Amit had nothing; Rakesh now only has Gujarat.
+    # Transferred-in dealers were not added by Amit, so they are not counted; Rakesh now only has Gujarat.
+    assert api(w["au"]).get("/api/salesman/areas/").data["dealers"] == 0
     assert [a["state"] for a in api(w["ru"]).get("/api/salesman/areas/").data["areas"]] == ["Gujarat"]
+
+
+def test_my_dealers_hides_imported_and_shared_dealers(w):
+    amit = w["amit"]
+    dealer("Own Shop", amit)
+    dealer("Imported Shop", amit, reason="Imported")
+    shared = dealer("Shared Shop", w["bina"])
+    DealerAccessGrant.objects.create(salesman=amit, dealer=shared)
+    c = api(w["au"])
+    assert [d["name"] for d in c.get("/api/salesman/dealer-list/").data["results"]] == ["Own Shop"]
+    assert c.get("/api/salesman/areas/").data["dealers"] == 1
+    assert [d["name"] for d in c.get("/api/salesman/dealers/").data] == ["Own Shop"]
+    # Hidden from the lists only: the salesman still has access to the imported dealer.
+    imported = Dealer.objects.get(name="Imported Shop")
+    assert c.get(f"/api/dealers/{imported.id}/").status_code == 200
 
 
 def test_orders_after_the_transfer_carry_the_new_salesman_and_old_ones_keep_rakesh(w, maharashtra):
@@ -283,18 +297,38 @@ def test_dealer_list_filters_search_blank_state_and_paging(w):
     get = lambda **q: c.get("/api/salesman/dealer-list/", q).data  # noqa: E731
 
     names = lambda data: [d["name"] for d in data["results"]]  # noqa: E731
-    assert names(get()) == ["Patil Motors", "Shared", "Sharma Auto", "Stateless"]  # archived + others' hidden
-    assert names(get(state="maharashtra", city="pune")) == ["Shared", "Sharma Auto"]
+    assert names(get()) == ["Patil Motors", "Sharma Auto", "Stateless"]  # archived, shared and others' hidden
+    assert names(get(state="maharashtra", city="pune")) == ["Sharma Auto"]
     assert names(get(q="9222")) == ["Patil Motors"]
     assert names(get(state="__none__")) == ["Stateless"]
-    shared_row = next(d for d in get()["results"] if d["name"] == "Shared")
-    assert shared_row["mine"] is False and all(d["mine"] for d in get()["results"] if d["name"] != "Shared")
+    assert all(d["mine"] for d in get()["results"])
     assert someone_elses.id not in [d["id"] for d in get()["results"]]
-    assert get(page="2")["results"] == [] and get(page="2")["count"] == 4
+    assert get(page="2")["results"] == [] and get(page="2")["count"] == 3
+
+
+def test_city_suggestions_come_from_the_salesmans_own_dealers(w):
+    amit, bina = w["amit"], w["bina"]
+    dealer("A", amit, city="Nagpur")
+    dealer("B", amit, city="nagpur ")
+    dealer("C", amit, city="Nagpur", state="")
+    dealer("D", amit, city="Pune", reason="Imported")  # assigned dealers count too: the salesman can see them
+    dealer("E", amit, city="", state="Gujarat")  # no city: nothing to suggest
+    dealer("F", amit, city="Old Town", is_archived=True)
+    dealer("G", bina, city="Surat", state="Gujarat")  # someone else's dealer
+    shared = dealer("H", city="Indore", state="Madhya Pradesh")
+    DealerAccessGrant.objects.create(salesman=amit, dealer=shared)
+
+    data = api(w["au"]).get("/api/salesman/cities/").data
+    assert data == [
+        {"city": "Indore", "state": "Madhya Pradesh"},
+        {"city": "Nagpur", "state": "Maharashtra"},  # three spellings, one city; the blank state is ignored
+        {"city": "Pune", "state": "Maharashtra"},
+    ]
+    assert api(w["bu"]).get("/api/salesman/cities/").data == [{"city": "Surat", "state": "Gujarat"}]
 
 
 def test_salesman_dealer_endpoints_are_for_salesmen_only(w):
-    for url in ("/api/salesman/areas/", "/api/salesman/dealer-list/"):
+    for url in ("/api/salesman/areas/", "/api/salesman/dealer-list/", "/api/salesman/cities/"):
         assert api(w["admin"]).get(url).status_code == 403
         assert api(w["mgr"]).get(url).status_code == 403
         assert APIClient().get(url).status_code == 401

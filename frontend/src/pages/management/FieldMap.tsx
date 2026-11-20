@@ -337,7 +337,6 @@ export default function FieldMap({ mode = 'tracking' }: { mode?: 'tracking' | 'n
             {dealerError && <p role="alert" className="text-amber-800">Could not refresh dealer locations. Click Refresh to retry.</p>}
             {!dealerMap && !dealerError && <p role="status">Loading saved dealer locations...</p>}
             {dealerMap?.total === 0 && <p>No dealers saved yet. Dealers with saved coordinates will appear here.</p>}
-            {!!dealerMap?.missing_location && <p>{dealerMap.missing_location} dealer{dealerMap.missing_location === 1 ? ' needs' : 's need'} a saved location before appearing on the map. <Link to="/dealer-locations" className="font-medium text-primary hover:underline">Set dealer locations</Link>.</p>}
           </div>}
           <LeafletMap className="h-[calc(100vh-16rem)] min-h-[28rem]" label={mode === 'tracking' ? 'India dealer locations and selected salesman' : 'Map of on-duty salesman and nearby dealers'} markers={markers} circles={circles} line={line}
             fitKey={mapFitKey} onMarkerClick={onMarkerClick} onMapClick={mode === 'nearby' && pick ? onMapClick : undefined} zoomOnSalesmanClick={mode === 'tracking'} />

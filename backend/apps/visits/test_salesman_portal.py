@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, Salesman, User
+from apps.dealers.access import CREATED_VIA_VISIT
 from apps.dealers.models import Dealer, DealerOwnershipHistory
 from apps.visits.models import Followup, Visit, VisitOrderItem
 
@@ -38,8 +39,8 @@ def w():
     mgr, _ = mk("mgr", Role.MANAGER)
     mine = Dealer.objects.create(name="Sharma Auto", phone="9111111111", city="Pune")
     theirs = Dealer.objects.create(name="Hidden Garage", city="Goa")
-    DealerOwnershipHistory.objects.create(dealer=mine, salesman=a)
-    DealerOwnershipHistory.objects.create(dealer=theirs, salesman=b)
+    DealerOwnershipHistory.objects.create(dealer=mine, salesman=a, reason=CREATED_VIA_VISIT)
+    DealerOwnershipHistory.objects.create(dealer=theirs, salesman=b, reason=CREATED_VIA_VISIT)
     return dict(alice=alice, a=a, bob=bob, b=b, admin=admin, mgr=mgr, mine=mine, theirs=theirs, today=timezone.localdate())
 
 
@@ -164,7 +165,7 @@ def record(user, **body):
 def test_order_lines_keep_unit_and_price_and_the_total_is_computed(w):
     r = record(w["alice"], dealer_id=w["mine"].id, has_order=True, order_items=[
         {"product_name": "Ceramic Film", "quantity": 3, "unit": "roll", "unit_price": "1250.50"},
-        {"product_name": "Cleaner", "quantity": 10, "unit": "ltr", "unit_price": "99"},
+        {"product_name": "Cleaner", "quantity": 10, "unit": "box", "unit_price": "99"},
         {"product_name": "Sample", "quantity": 1},  # unpriced: still recorded
     ])
     assert r.status_code == 201, r.data

@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework.exceptions import NotFound, ValidationError
 
 from apps.accounts.models import Salesman
-from apps.dealers.access import accessible_dealers
+from apps.dealers.access import CREATED_VIA_VISIT, accessible_dealers
 from apps.dealers.models import Dealer, DealerContact, DealerOwnershipHistory, DealerStatus
 from apps.dealers.phone import normalize_phone
 
@@ -76,7 +76,7 @@ def _create_dealer(salesman, data) -> Dealer:
         primary_salesman=salesman,
         **location,
     )
-    DealerOwnershipHistory.objects.create(dealer=dealer, salesman=salesman, reason="Created via visit")
+    DealerOwnershipHistory.objects.create(dealer=dealer, salesman=salesman, reason=CREATED_VIA_VISIT)
     if has_fix:  # the shop-location history management sees starts with the salesman's own capture
         from apps.field.models import FieldAuditLog
         from apps.field.services import audit

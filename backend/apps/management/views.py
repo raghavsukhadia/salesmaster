@@ -148,6 +148,8 @@ class DealersView(APIView):
             qs = qs.filter(city__icontains=p["city"])
         if p.get("owner", "").isdigit():
             qs = qs.filter(pk__in=owned.filter(salesman_id=p["owner"]).values("dealer_id"))
+        if p.get("not_owner", "").isdigit():  # e.g. Assign dealers: hide the ones this salesman already owns
+            qs = qs.exclude(pk__in=owned.filter(salesman_id=p["not_owner"]).values("dealer_id"))
         if p.get("visit") == "stale":
             qs = qs.filter(stale_visit_q(timezone.now()))
         if p.get("q"):

@@ -1,7 +1,7 @@
 // Order line arithmetic. Money is handled in whole paise (integers) so 3 x 1250.50 never becomes 3751.4999999.
 
 /** Must match ORDER_UNITS in backend/apps/visits/serializers.py. */
-export const UNITS = ['pcs', 'box', 'roll', 'set', 'pair', 'sq ft', 'sq m', 'mtr', 'kg', 'ltr'] as const
+export const UNITS = ['pcs', 'roll', 'box'] as const
 export type Unit = (typeof UNITS)[number]
 
 export interface OrderLine {

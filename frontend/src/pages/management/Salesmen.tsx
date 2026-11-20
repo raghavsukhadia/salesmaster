@@ -119,7 +119,7 @@ export default function Salesmen() {
       <PageHeader title="Salesman"
         action={admin ? <Button onClick={() => setAdding(true)}><UserPlus size={16} aria-hidden />Add salesman</Button> : undefined} />
       <SearchBox value={q} onChange={setQ} placeholder="Search by name, username, phone or email" />
-      <Table stack head={[{ label: 'Name' }, { label: 'Phone' }, { label: 'Email' }, { label: 'Status' }, { label: 'Territories' }, { label: 'Actions', right: true }]}
+      <Table stack head={[{ label: 'Name' }, { label: 'Phone' }, { label: 'Email' }, { label: 'Status' }, { label: 'Actions', right: true }]}
         loading={loading && !data} error={error && !data} onRetry={reload} empty={rows.length === 0}
         emptyTitle={q ? 'No salesman matches your search' : 'No salesman yet'} emptyHint={q ? undefined : admin ? 'Use “Add salesman” to create the first account.' : undefined}>
         {rows.map((s) => (
@@ -128,20 +128,11 @@ export default function Salesmen() {
             <td className="sm:whitespace-nowrap">{s.phone}</td>
             <td>{s.email || '—'}</td>
             <td>{s.active ? <Badge tone="green">Active</Badge> : <Badge tone="gray">Inactive</Badge>}</td>
-            <td>
-              <div className="max-w-[16rem] text-slate-600">{s.territories.length ? s.territories.join(', ') : 'No territories assigned'}</div>
-              {admin && <Link to={`/salesmen/${s.id}#territories`} className="text-xs font-medium text-primary hover:underline">Edit territories</Link>}
-            </td>
             <td data-label="">
               <div className="flex flex-wrap gap-2 sm:justify-end">
                 <Link to={`/salesmen/${s.id}`} className={buttonClass('soft', 'sm')}>Edit</Link>
                 <Button size="sm" variant={s.active ? 'warning' : 'primary'} disabled={busyId === s.id} onClick={() => toggle(s)}>{s.active ? 'Deactivate' : 'Activate'}</Button>
-                {admin && (
-                  <>
-                    <Link to={`/salesmen/${s.id}#offboard`} className={buttonClass('secondary', 'sm')}>Offboard</Link>
-                    <Button size="sm" variant="dangerSoft" disabled={busyId === s.id} onClick={() => remove(s)}>Delete</Button>
-                  </>
-                )}
+                {admin && <Button size="sm" variant="dangerSoft" disabled={busyId === s.id} onClick={() => remove(s)}>Delete</Button>}
               </div>
             </td>
           </tr>

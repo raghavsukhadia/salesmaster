@@ -5,7 +5,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from apps.dealers.access import accessible_dealers
+from apps.dealers.access import dealers_added_by
 
 from .permissions import IsAdmin, IsManagement, IsSalesman
 from .serializers import ChangePasswordSerializer, LoginSerializer
@@ -51,12 +51,12 @@ class ChangePasswordView(APIView):
 
 
 class SalesmanDealersView(APIView):
-    """Salesman-scoped dealer list (ownership + grants only). Placeholder for the Record Visit search."""
+    """Record Visit "Existing Dealer" search: only dealers this salesman added themselves, not imported/assigned ones."""
 
     permission_classes = [IsSalesman]
 
     def get(self, request):
-        qs = accessible_dealers(request.user)
+        qs = dealers_added_by(request.user)
         q = request.query_params.get("q", "").strip()
         if q:
             qs = qs.filter(Q(name__icontains=q) | Q(shop_name__icontains=q) | Q(phone__icontains=q))

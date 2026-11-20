@@ -149,7 +149,7 @@ export default function ScanPanel({ scan, onFile, onRead, onRemoveShot, onCamera
                 <div className={`h-full rounded-full bg-primary transition-[width] duration-300 ${stage === 'reading' ? '' : 'animate-pulse'}`}
                   style={{ width: stage === 'reading' ? `${Math.max(5, Math.round((scan.progress?.progress ?? 0) * 100))}%` : '15%' }} />
               </div>
-              <p className="mt-2 text-xs text-slate-500">This takes a few seconds. You can still enter the details by hand using the other tabs.</p>
+              <p className="mt-2 text-xs text-slate-500">Each photo is read several ways for accuracy, so this can take 10–20 seconds. You can still enter the details by hand using the other tabs.</p>
             </div>
           </div>
         </div>

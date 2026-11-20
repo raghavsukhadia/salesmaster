@@ -329,7 +329,7 @@ export function StateSelect({ value, onChange, className = '', placeholder = 'Se
       </button>
       {open && (
         <>
-          <div aria-hidden className="fixed inset-0 z-40 bg-primary/40 sm:hidden" onClick={() => setOpen(false)} />
+          <div aria-hidden className="fixed inset-0 z-40 bg-slate-900/40 sm:hidden" onClick={() => setOpen(false)} />
           <div role="dialog" aria-label="Choose a state"
             className="fixed inset-x-0 bottom-0 z-50 flex max-h-[75vh] flex-col rounded-t-2xl border bg-white pb-[env(safe-area-inset-bottom)] shadow-pop sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:max-h-80 sm:w-full sm:min-w-64 sm:rounded-lg sm:pb-0">
             <div className="flex items-center justify-between px-4 pt-3 sm:hidden">
@@ -473,7 +473,7 @@ export function Modal({ title, onClose, children, width = 'max-w-md' }: { title:
     return () => { document.removeEventListener('keydown', key); document.body.style.overflow = overflow; opener?.focus?.() }
   }, [opener])
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-primary/40 p-0 backdrop-blur-[1px] sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 backdrop-blur-[1px] sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div ref={box} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
         className={`max-h-[90vh] w-full ${width} overflow-y-auto rounded-t-2xl bg-white p-6 shadow-pop outline-none sm:rounded-2xl`}>
         <div className="mb-4 flex items-start justify-between gap-4">

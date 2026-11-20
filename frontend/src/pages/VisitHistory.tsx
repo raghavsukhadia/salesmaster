@@ -30,11 +30,6 @@ export default function VisitHistory() {
 
   return (
     <div className="flex flex-col gap-4">
-      {data && (
-        <p className="text-sm text-slate-500" data-testid="visit-summary">
-          {data.summary.total} visits · {data.summary.orders} with orders · {data.summary.last_7_days} in the last 7 days
-        </p>
-      )}
       <div className="grid grid-cols-2 items-end gap-2 sm:grid-cols-[1fr_9.5rem_9.5rem_12rem]">
         <div className="relative col-span-2 sm:col-span-1">
           <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />
@@ -61,9 +56,7 @@ export default function VisitHistory() {
       {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">Could not load visits. Please refresh.</p>}
       {data && data.results.length === 0 && (
         <Card>
-          <EmptyState title={filtered ? 'No visits match these filters' : 'No visits yet'}
-            hint={filtered ? undefined : 'Visits you record show up here.'}
-            action={filtered ? undefined : <Link to="/record-visit" className="text-sm font-medium text-primary hover:underline">Record your first visit</Link>} />
+          <EmptyState title={filtered ? 'No visits match these filters' : 'No visits yet'} />
         </Card>
       )}
       <ul className={`flex flex-col gap-3 ${loading ? 'opacity-60' : ''}`}>

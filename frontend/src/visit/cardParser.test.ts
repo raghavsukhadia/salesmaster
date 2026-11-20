@@ -2,7 +2,7 @@
 // Run with: npm test   (node --test, native TypeScript type stripping)
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { EMPTY_CARD, GSTIN_RE, gstinCheckChar, gstinChecksumOk, parseCard, repairGstin } from './cardParser.ts'
+import { EMPTY_CARD, GSTIN_RE, gstinCheckChar, gstinChecksumOk, mergeCardReads, parseCard, parseCardReads, repairGstin } from './cardParser.ts'
 
 const card = (lines: string[]) => parseCard(lines.join('\n'))
 
@@ -219,4 +219,62 @@ test('a pincode printed in two groups is read on an address line', () => {
 test('a one-word brand and initials-style names are kept whole', () => {
   assert.equal(card(['Zenith', 'Mob: 9876543210']).name, 'Zenith')
   assert.equal(card(['R K Traders', 'Mob: 9876543210']).name, 'R K Traders')
+})
+
+// ───────────── several reads of one card ─────────────
+
+const read = (confidence: number, fields: Partial<typeof EMPTY_CARD>) => ({ confidence, fields: { ...EMPTY_CARD, ...fields } })
+
+test('reads that agree beat a single more confident read', () => {
+  const r = mergeCardReads([
+    read(70, { phone: '9876543210' }),
+    read(65, { phone: '9876543210' }),
+    read(90, { phone: '9876543218' }),
+  ])
+  assert.equal(r.phone, '9876543210')
+})
+
+test('agreement ignores case and punctuation, and keeps the most confident spelling', () => {
+  const r = mergeCardReads([read(60, { name: 'SHARMA AUTO.' }), read(80, { name: 'Sharma Auto' }), read(95, { name: 'SHARMA AUT0 ACC' })])
+  assert.equal(r.name, 'Sharma Auto')
+})
+
+test('each field is taken from whichever read found it', () => {
+  const r = mergeCardReads([
+    read(80, { name: 'Sharma Auto', phone: '9876543210' }),
+    read(70, { address: 'MG Road, Pune - 411001', city: 'Pune', pincode: '411001' }),
+    read(40, {}),
+  ])
+  assert.deepEqual(r, { ...EMPTY_CARD, name: 'Sharma Auto', phone: '9876543210', address: 'MG Road, Pune - 411001', city: 'Pune', pincode: '411001' })
+})
+
+test('a GSTIN that passes its check character wins over one that does not', () => {
+  const good = '27ABCDE1234F1Z' + gstinCheckChar('27ABCDE1234F1Z')
+  const bad = '27ABCDE1234F1Z' + (good.endsWith('A') ? 'B' : 'A')
+  assert.equal(mergeCardReads([read(95, { gst_number: bad }), read(90, { gst_number: bad }), read(50, { gst_number: good })]).gst_number, good)
+})
+
+test('a WhatsApp number equal to the merged phone is dropped', () => {
+  const r = mergeCardReads([read(90, { phone: '9876543210' }), read(50, { phone: '9123456780', whatsapp: '9876543210' })])
+  assert.equal(r.phone, '9876543210')
+  assert.equal(r.whatsapp, '')
+})
+
+test('front and back reads are paired by treatment and merged', () => {
+  const front = [
+    { text: 'SHARMA AUTO ACCESSORIES\nMob: 98765 43210', confidence: 85 },
+    { text: '=- ,|\nMob: 98765 43210', confidence: 60 },
+  ]
+  const back = [{ text: 'Shop 12, MG Road,\nPune - 411001, Maharashtra', confidence: 80 }]
+  const r = parseCardReads([front, back])
+  assert.equal(r.fields.name, 'SHARMA AUTO ACCESSORIES')
+  assert.equal(r.fields.phone, '9876543210')
+  assert.equal(r.fields.city, 'Pune')
+  assert.equal(r.fields.state, 'Maharashtra')
+  assert.equal(r.text, `${front[0].text}\n${back[0].text}`)
+})
+
+test('no reads at all give empty fields', () => {
+  assert.deepEqual(parseCardReads([]), { fields: EMPTY_CARD, text: '' })
+  assert.deepEqual(parseCardReads([[]]), { fields: EMPTY_CARD, text: '' })
 })

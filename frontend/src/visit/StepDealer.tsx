@@ -4,9 +4,10 @@ import { api, ApiError } from '../auth'
 import { Button, Card, Field, fieldErrors, StateSelect } from '../components/ui'
 import { GOOD_FIX_M, gpsMessage, isFresh, quickReading, type Reading } from '../field/gps.ts'
 import { tracker } from '../field/useTracker'
-import { CardImageError, readCard } from './cardOcr.ts'
-import { parseCard, type CardField } from './cardParser.ts'
+import { CardImageError, readCard, type OcrPass } from './cardOcr.ts'
+import { parseCardReads, type CardField } from './cardParser.ts'
 import { CARD_DRAFT_KEYS, draftPayload, EMPTY_DRAFT, hasLocation, LOCATION_KEYS, validateDraft, type DealerDraft } from './dealerDraft.ts'
+import CityInput from './CityInput'
 import DealerPicker from './DealerPicker'
 import ScanPanel from './ScanPanel'
 import { addShot, canRead, removeShot } from './scanShots.ts'
@@ -89,9 +90,12 @@ function DealerFields({ draft, set, errors, filled }: { draft: DealerDraft; set:
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="sm:col-span-2"><Field label="Business name *" error={errors.name}>{text('name', { autoComplete: 'off', maxLength: 200 })}</Field></div>
-      <div className="sm:col-span-2"><Field label="Phone *" error={errors.phone} hint="Unique 10-digit mobile; dealer names may repeat">{text('phone', { type: 'tel', inputMode: 'tel', autoComplete: 'off', maxLength: 20 })}</Field></div>
+      <div className="sm:col-span-2"><Field label="Phone *" error={errors.phone}>{text('phone', { type: 'tel', inputMode: 'tel', autoComplete: 'off', maxLength: 20 })}</Field></div>
       <LocationField draft={draft} set={set} error={errors.location} />
-      <Field label="City *" error={errors.city}>{text('city', { autoComplete: 'off', maxLength: 80 })}</Field>
+      <Field label="City *" error={errors.city}>
+        {(p) => <CityInput {...p} className={`${p.className} ${tint(filled, 'city')}`} value={draft.city} onChange={(v) => set('city', v)}
+          onPick={(o) => { set('city', o.city); if (o.state && !draft.state) set('state', o.state) }} />}
+      </Field>
       <Field label="State *" error={errors.state}>
         {(p) => <StateSelect id={p.id} value={draft.state} onChange={(v) => set('state', v)} className={`${p.className} ${tint(filled, 'state')}`} />}
       </Field>
@@ -145,18 +149,17 @@ export default function StepDealer({ state, update, onContinue }: { state: Deale
     abort.current = ctl
     update({ scan: { phase: 'reading', shots, readingPhoto: 1, progress: { stage: 'preparing', progress: 0 } } })
     try {
-      // Front then back, one after the other; the text of both is parsed together.
-      const parts: string[] = []
+      // Front then back, one after the other. Each photo is read several ways; all the reads are parsed and merged together.
+      const photos: OcrPass[][] = []
       for (const [i, shot] of shots.entries()) {
-        const part = await readCard(shot, {
+        const reads = await readCard(shot, {
           signal: ctl.signal,
           onProgress: (progress) => { if (!ctl.signal.aborted) update((s) => ({ scan: { ...s.scan, progress, readingPhoto: i + 1 } })) },
         })
         if (ctl.signal.aborted) return
-        parts.push(part)
+        photos.push(reads)
       }
-      const text = parts.join('\n')
-      const found = parseCard(text)
+      const { fields: found, text } = parseCardReads(photos)
       const keys = CARD_DRAFT_KEYS.filter((k) => found[k])
       if (!keys.length) {
         // Start over from photo 1: the photos that could not be read are dropped.

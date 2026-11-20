@@ -66,14 +66,14 @@ function VisitCard({ v }: { v: VisitRow }) {
   )
 }
 
-export default function RecentVisits({ rows, loading, error, onRetry, rangeLabel }: { rows: VisitRow[]; loading: boolean; error: boolean; onRetry: () => void; rangeLabel: string }) {
+export default function RecentVisits({ rows, loading, error, onRetry }: { rows: VisitRow[]; loading: boolean; error: boolean; onRetry: () => void }) {
   const cards = !loading && !error && rows.length > 0
   return (
     <>
       {cards && <ul className="space-y-3 sm:hidden" aria-label="Recent visits">{rows.map((v) => <VisitCard key={v.id} v={v} />)}</ul>}
       <div className={cards ? 'hidden sm:block' : ''}>
     <Table stack loading={loading} error={error} onRetry={onRetry} empty={rows.length === 0}
-      emptyTitle="No visits in this period" emptyHint={`Nothing was recorded for “${rangeLabel}”. Pick a wider date range in the top bar.`}
+      emptyTitle="No visits in this period"
       head={[{ label: 'Dealer' }, { label: 'Salesman' }, { label: 'Date & time' }, { label: 'Check-in location' }, { label: 'Outcome' }, { label: 'Next follow-up' }, { label: 'Details', right: true }]}>
       {rows.map((v) => (
         <tr key={v.id}>

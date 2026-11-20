@@ -40,7 +40,7 @@ export default function MyDealers() {
         <h2 className="mb-3 font-semibold">Assigned areas</h2>
         {areas.loading && !areas.data && <p role="status" className="text-sm text-slate-500">Loading areas...</p>}
         {areas.error && <p role="alert" className="text-sm text-red-700">Could not load areas. Please refresh.</p>}
-        {areas.data && areas.data.areas.length === 0 && <Card>No areas or dealers assigned yet.</Card>}
+        {areas.data && areas.data.areas.length === 0 && <Card className="px-4 py-3 text-sm text-slate-600">No areas or dealers assigned yet.</Card>}
         {/* Every chip, "All areas" included, is the same card so they line up: two per row on phones, wrapping on wider screens. */}
         <div className="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap">
           {!!areas.data?.areas.length && (

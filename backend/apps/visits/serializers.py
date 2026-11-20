@@ -7,7 +7,7 @@ from .models import Followup
 from .timing import check_time_not_past
 
 # Units a salesman can pick for an order line. VisitOrderItem.unit is a free 10-char column; the API keeps it to a known list.
-ORDER_UNITS = ("pcs", "box", "roll", "set", "pair", "sq ft", "sq m", "mtr", "kg", "ltr")
+ORDER_UNITS = ("pcs", "roll", "box")
 
 
 class NewDealerSerializer(serializers.Serializer):

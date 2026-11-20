@@ -88,7 +88,7 @@ class OptionsView(APIView):
         cats = sorted({c for c in Product.objects.exclude(category="").values_list("category", flat=True)}, key=str.lower)
         products = [{"value": f"p{p.id}", "label": p.name, "category": p.category, "custom": False} for p in Product.objects.order_by("name")]
         custom = (lines(pool, dated=False).filter(product__isnull=True).annotate(pkey=PKEY).values("pkey")
-                  .annotate(label=Max("product_name"), n=Count("id")).order_by("-n", "label")[:300])
+                  .annotate(label=Max("product_name"), n=Count("id")).order_by("-n", "label"))
         products += [{"value": r["pkey"], "label": r["label"], "category": "", "custom": True} for r in custom]
         return Response({
             "role": request.user.role, "management": f.management, "salesmen": salesmen, "categories": cats, "products": products, "units": units,
@@ -111,4 +111,4 @@ class DealerOptionsView(APIView):
             q = (p.get("q") or "").strip()[:80]
             if q:
                 pool = pool.filter(Q(name__icontains=q) | Q(phone__icontains=q) | Q(city__icontains=q) | Q(shop_name__icontains=q))
-        return Response([{"id": d.id, "name": d.name, "location": where(d)} for d in pool.order_by("name")[:20]])
+        return Response([{"id": d.id, "name": d.name, "location": where(d)} for d in pool.order_by("name")])

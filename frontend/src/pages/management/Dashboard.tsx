@@ -3,7 +3,7 @@ import { ArrowRight, CalendarClock, CalendarX, ClipboardCheck, RefreshCw, Store,
 import type { LucideIcon } from 'lucide-react'
 import type { Me } from '../../auth'
 import { useDateRange } from '../../components/DateRange'
-import { dealerSeverity, pct } from '../../components/logic'
+import { dealerSeverity } from '../../components/logic'
 import { Badge, Button, buttonClass, Card, ErrorState, fmtTime, PageHeader, Skeleton, useApi, type Tone } from '../../components/ui'
 import RecentVisits, { ViewAll, type VisitRow } from './RecentVisits'
 import SalesmanActivity, { type ActivityRow } from './SalesmanActivity'
@@ -46,7 +46,7 @@ const SEV: Record<Severity['label'], Severity> = {
 /** Dealer counts are judged by share of all dealers (see dealerSeverity); any overdue follow-up is a missed commitment, so it is High. */
 const dealerSev = (n: number, total: number) => SEV[dealerSeverity(n, total)]
 
-function ActionCard({ icon: Icon, title, count, text, sev, cta, to }: { icon: LucideIcon; title: string; count: number; text: string; sev: Severity; cta: string; to: string }) {
+function ActionCard({ icon: Icon, title, count, sev, cta, to }: { icon: LucideIcon; title: string; count: number; sev: Severity; cta: string; to: string }) {
   return (
     <Card className="flex flex-col overflow-hidden">
       <div aria-hidden className={`h-1 ${sev.bar}`} />
@@ -58,9 +58,7 @@ function ActionCard({ icon: Icon, title, count, text, sev, cta, to }: { icon: Lu
         </div>
         <Badge tone={sev.tone}><span className="sr-only">Severity: </span>{sev.label}</Badge>
       </div>
-      <div className="mt-4 text-3xl font-semibold tabular-nums tracking-tight text-slate-900">{count.toLocaleString('en-IN')}</div>
-      <p className="mt-1 text-sm text-slate-500">{text}</p>
-      <div className="mt-auto pt-4"><Link to={to} className={buttonClass('secondary', 'sm')}>{cta}<ArrowRight size={14} aria-hidden /></Link></div>
+      <div className="mt-4 text-3xl font-semibold tabular-nums tracking-tight text-slate-900">{count.toLocaleString('en-IN')}</div>      <div className="mt-auto pt-4"><Link to={to} className={buttonClass('secondary', 'sm')}>{cta}<ArrowRight size={14} aria-hidden /></Link></div>
       </div>
     </Card>
   )
@@ -68,7 +66,7 @@ function ActionCard({ icon: Icon, title, count, text, sev, cta, to }: { icon: Lu
 
 export default function Dashboard() {
   const { me } = useOutletContext<{ me: Me }>()
-  const [range, , rangeLabel] = useDateRange()
+  const [range] = useDateRange()
   const dash = useApi<Data>('/api/management/dashboard/')
   const visits = useApi<Visits>(`/api/management/visits/?range=${range}&page=1`)
   const d = dash.data
@@ -111,11 +109,11 @@ export default function Dashboard() {
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             <ActionCard icon={UserX} title="Unassigned dealers" count={d.unassigned_dealers} sev={dealerSev(d.unassigned_dealers, d.kpis.total_dealers)}
-              text={`No current owning salesman. ${pct(d.unassigned_dealers, d.kpis.total_dealers)}% of ${d.kpis.total_dealers} dealers.`} cta="View unassigned dealers" to="/dealers?assignment=unassigned" />
+              cta="View unassigned dealers" to="/dealers?assignment=unassigned" />
             <ActionCard icon={CalendarX} title="Overdue follow-ups" count={d.overdue_followups} sev={SEV[d.overdue_followups ? 'High' : 'Clear']}
-              text={`Past their due date and still pending. ${d.overdue_followups} of ${d.kpis.pending_followups} pending.`} cta="View overdue follow-ups" to="/followups-management?tab=overdue" />
+              cta="View overdue follow-ups" to="/followups-management?tab=overdue" />
             <ActionCard icon={Store} title="Dealers with no recent visit" count={d.no_recent_visit} sev={dealerSev(d.no_recent_visit, d.kpis.total_dealers)}
-              text={`Not visited in the last 30 days, or never. ${pct(d.no_recent_visit, d.kpis.total_dealers)}% of dealers.`} cta="View these dealers" to="/dealers?visit=stale" />
+              cta="View these dealers" to="/dealers?visit=stale" />
           </div>
         </section>
       )}
@@ -134,7 +132,7 @@ export default function Dashboard() {
           <ViewAll to={allVisits}>View all visits</ViewAll>
         </div>
         {/* Skeleton on every refetch: rows from the previous period must never sit under the new period's label. */}
-        <RecentVisits rows={rows} loading={visits.loading} error={visits.error && !visits.loading} onRetry={visits.reload} rangeLabel={rangeLabel} />
+        <RecentVisits rows={rows} loading={visits.loading} error={visits.error && !visits.loading} onRetry={visits.reload} />
       </section>
     </>
   )

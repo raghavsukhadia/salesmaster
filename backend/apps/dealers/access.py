@@ -42,5 +42,15 @@ def accessible_dealers(user):
     return Dealer.objects.filter(scope)
 
 
+#: DealerOwnershipHistory.reason written when a salesman adds a new dealer while recording a visit.
+CREATED_VIA_VISIT = "Created via visit"
+
+
+def dealers_added_by(user):
+    """Dealers this salesman added themselves (via a visit) and can still access. Imported/assigned dealers are excluded."""
+    added = DealerOwnershipHistory.objects.filter(salesman__user=user, reason=CREATED_VIA_VISIT).values("dealer_id")
+    return accessible_dealers(user).filter(pk__in=added)
+
+
 def can_access_dealer(user, dealer_id) -> bool:
     return accessible_dealers(user).filter(pk=dealer_id).exists()

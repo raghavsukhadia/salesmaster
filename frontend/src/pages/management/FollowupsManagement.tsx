@@ -21,7 +21,7 @@ export default function FollowupsManagement() {
   const s = data?.summary
   return (
     <>
-      <PageHeader title="Follow-up Management" subtitle="Track salesman follow-up activity, outcomes and pending actions" action={<button disabled className="rounded-xl border px-4 py-2.5 text-sm opacity-50">Export</button>} />
+      <PageHeader title="Follow-up Management" action={<button disabled className="rounded-xl border px-4 py-2.5 text-sm opacity-50">Export</button>} />
       <StatStrip items={[
         { label: 'Overdue', value: s?.overdue ?? '–', tone: 'red' }, { label: 'Due Today', value: s?.due_today ?? '–', tone: 'red' },
         { label: 'Upcoming', value: s?.upcoming ?? '–' }, { label: 'Completed', value: s?.completed ?? '–' }, { label: 'No Response', value: s?.no_response ?? '–' },

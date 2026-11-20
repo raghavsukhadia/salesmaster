@@ -48,7 +48,7 @@ export default function AppShell({ me, children }: { me: Me; children: React.Rea
     <div className="min-h-screen bg-white text-slate-900" style={toneStyle(toneFor(items, pathname))}>
       <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[80] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white">Skip to content</a>
       <Sidebar items={items} followups={followups} collapsed={collapsed} open={drawer} onNavigate={() => setDrawer(false)} onExpand={() => setCollapsedSaved(false)} />
-      {drawer && <div aria-hidden className="fixed inset-0 z-30 bg-primary/40 lg:hidden" onClick={() => setDrawer(false)} />}
+      {drawer && <div aria-hidden className="fixed inset-0 z-30 bg-slate-900/40 lg:hidden" onClick={() => setDrawer(false)} />}
       <div className={`transition-[padding] duration-200 print:pl-0 ${collapsed ? 'lg:pl-16' : 'lg:pl-64'}`}>
         <TopBar me={me} onToggle={toggle} />
         {/* Salesman on a phone: leave room so the fixed bottom bar never covers the end of a page. */}
