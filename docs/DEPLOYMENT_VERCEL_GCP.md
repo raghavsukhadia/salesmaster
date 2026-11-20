@@ -15,7 +15,7 @@ Prepared on 14 November 2026. The files in this repository are prepared for this
 
 Cloud Run's container filesystem is temporary. Use PostgreSQL and Cloud Storage for persistent records and uploads; do not upload the local SQLite database into the container. Google's [Django deployment guide](https://docs.cloud.google.com/python/django/run) describes this service arrangement.
 
-The frontend now reads `VITE_API_BASE_URL` for login, token refresh, API calls, downloads and photos. Leave it empty locally to use Vite's development proxy; set it to the Cloud Run **origin**, for example `https://sales-master-api-EXAMPLE.asia-south1.run.app`, on Vercel. Do not append `/api`. Vite embeds this value at build time, so changing it requires a new frontend deployment. Never put passwords or keys in a `VITE_` variable. [Vite environment variable documentation](https://vite.dev/guide/env-and-mode).
+The frontend now reads `VITE_API_URL` for login, token refresh, API calls, downloads and photos. Leave it empty locally to use Vite's development proxy; set it to the Cloud Run **origin**, for example `https://sales-master-api-EXAMPLE.asia-south1.run.app`, on Vercel. Do not append `/api`. Vite embeds this value at build time, so changing it requires a new frontend deployment. Never put passwords or keys in a `VITE_` variable. [Vite environment variable documentation](https://vite.dev/guide/env-and-mode).
 
 ## 1. Local data cleanup and account preservation
 
@@ -87,7 +87,7 @@ export SQL_CONNECTION="$(gcloud sql instances describe "$SQL_INSTANCE" --format=
 gcloud projects add-iam-policy-binding "$PROJECT_ID" --member="serviceAccount:${RUNTIME_SA}" --role="roles/cloudsql.client"
 ```
 
-The backend's `DATABASE_HOST` will be `/cloudsql/PROJECT:REGION:sales-master-db`. Both the web service and every database job need the Cloud SQL attachment. [Connecting Cloud Run to Cloud SQL](https://docs.cloud.google.com/sql/docs/postgres/connect-run).
+The backend's `INSTANCE_CONNECTION_NAME` is `PROJECT:REGION:sales-master-db`; Django connects through the `/cloudsql/<INSTANCE_CONNECTION_NAME>` socket. Both the web service and every database job need the Cloud SQL attachment. [Connecting Cloud Run to Cloud SQL](https://docs.cloud.google.com/sql/docs/postgres/connect-run).
 
 ## 4. Private photos and secrets
 
@@ -113,7 +113,7 @@ Enter values in Secret Manager rather than pasting passwords into deployment com
 for SECRET in sales-master-django-secret sales-master-db-password; do
   gcloud secrets add-iam-policy-binding "$SECRET" --member="serviceAccount:${RUNTIME_SA}" --role="roles/secretmanager.secretAccessor"
 done
-export RUNTIME_SECRETS="DJANGO_SECRET_KEY=sales-master-django-secret:1,DATABASE_PASSWORD=sales-master-db-password:1"
+export RUNTIME_SECRETS="DJANGO_SECRET_KEY=sales-master-django-secret:1,DB_PASSWORD=sales-master-db-password:1"
 ```
 
 The examples pin secret version `1`. Use the actual enabled version when rotating secrets or deploying a later release. [Cloud Run secret configuration](https://docs.cloud.google.com/run/docs/configuring/services/secrets).
@@ -124,12 +124,11 @@ Copy `backend/cloudrun.env.yaml.example` to `backend/cloudrun.env.yaml`, then re
 
 | Setting | Required value |
 | --- | --- |
-| `DATABASE_HOST` | `/cloudsql/` followed by the actual instance connection name |
-| `DATABASE_NAME`, `DATABASE_USER` | The database and user created above |
+| `INSTANCE_CONNECTION_NAME` | The actual instance connection name (`PROJECT:REGION:sales-master-db`) |
+| `DB_NAME`, `DB_USER` | The database and user created above (`DB_PASSWORD` comes from Secret Manager) |
 | `GS_BUCKET_NAME` | The private photo bucket's name, without `gs://` |
-| `CORS_ALLOWED_ORIGINS` | Exact Vercel/custom frontend origins, separated by commas if needed |
-| `CSRF_TRUSTED_ORIGINS` | Exact trusted HTTPS origins for browser session/admin use |
-| `DJANGO_ALLOWED_HOSTS` | Initially `.run.app`; narrow to the service hostname after the first deployment |
+| `FRONTEND_URLS` | Exact Vercel/custom frontend origins, separated by commas; used for both CORS and CSRF |
+| `ALLOWED_HOSTS` | Initially `.run.app`; narrow to the service hostname after the first deployment |
 
 The Docker image selects `config.settings_cloud`, installs `requirements-cloud.txt`, serves Django with Gunicorn on `$PORT`, and collects Django/admin static assets into the image using WhiteNoise. Dummy values used for static collection are build-only values; runtime secrets are not baked into the image. Production settings require PostgreSQL configuration and a bucket instead of silently falling back to SQLite. [WhiteNoise Django setup](https://whitenoise.readthedocs.io/en/stable/django.html).
 
@@ -171,12 +170,12 @@ gcloud run deploy "$SERVICE" \
 
 export SERVICE_URL="$(gcloud run services describe "$SERVICE" --region="$REGION" --format='value(status.url)')"
 echo "$SERVICE_URL"
-gcloud run services update "$SERVICE" --region="$REGION" --update-env-vars="DJANGO_ALLOWED_HOSTS=${SERVICE_URL#https://}"
+gcloud run services update "$SERVICE" --region="$REGION" --update-env-vars="ALLOWED_HOSTS=${SERVICE_URL#https://}"
 ```
 
 Public HTTP invocation allows the browser to reach login and the JWT-protected API. It does not remove Django authentication. If an organization policy prohibits public Cloud Run services, ask the project administrator to select the supported access arrangement before deploying.
 
-Update the hostname in `backend/cloudrun.env.yaml` too, so the next release keeps the narrowed setting. To add a backend custom domain later, include its hostname in `DJANGO_ALLOWED_HOSTS` and use its HTTPS origin in the frontend configuration.
+Update the hostname in `backend/cloudrun.env.yaml` too, so the next release keeps the narrowed setting. To add a backend custom domain later, include its hostname in `ALLOWED_HOSTS` and use its HTTPS origin in the frontend configuration.
 
 Start with the single worker and instance shown here: Django currently uses a process-local cache for throttling. Configure a shared cache before increasing worker or instance counts if you need shared login/upload/GPS rate limits.
 
@@ -214,13 +213,13 @@ Import the actual application Git repository into Vercel and configure:
 | Install Command | `npm ci` |
 | Build Command | `npm run build` |
 | Output Directory | `dist` |
-| Environment Variable | `VITE_API_BASE_URL` = the actual `SERVICE_URL`, without `/api` |
+| Environment Variable | `VITE_API_URL` = the actual `SERVICE_URL`, without `/api` |
 
 Set the variable for Production before deploying. Use a separate backend/database for preview deployments when possible; add an exact preview origin to backend CORS only when you intend it to use that backend.
 
-`frontend/vercel.json` supplies the SPA fallback, so refreshing `/dealers`, `/my-dealers/5` or `/visit-history` loads React instead of returning Vercel 404. Requests go directly to Cloud Run using `VITE_API_BASE_URL`; no Vercel API proxy is required. [Vercel Vite deployment and SPA routing](https://vercel.com/docs/frameworks/frontend/vite).
+`frontend/vercel.json` supplies the SPA fallback, so refreshing `/dealers`, `/my-dealers/5` or `/visit-history` loads React instead of returning Vercel 404. Requests go directly to Cloud Run using `VITE_API_URL`; no Vercel API proxy is required. [Vercel Vite deployment and SPA routing](https://vercel.com/docs/frameworks/frontend/vite).
 
-If the final Vercel/custom hostname differs from the one in the backend YAML, update `CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS` there and update/redeploy the API. A CORS error is resolved with the exact frontend origin, not with `*`.
+If the final Vercel/custom hostname differs from the one in the backend YAML, update `FRONTEND_URLS` there and update/redeploy the API. A CORS error is resolved with the exact frontend origin, not with `*`.
 
 ## 10. Verify the live deployment
 
@@ -249,9 +248,9 @@ For a release: commit/push the code, choose a new `IMAGE_TAG`, rebuild, run migr
 
 | Symptom | Check |
 | --- | --- |
-| Login returns HTML / JSON parse error | Vercel `VITE_API_BASE_URL` was absent at build time; set it and redeploy |
-| API responds 400 / `DisallowedHost` | Exact backend hostname in `DJANGO_ALLOWED_HOSTS` |
-| Browser blocks API calls | Exact frontend origin in `CORS_ALLOWED_ORIGINS` |
+| Login returns HTML / JSON parse error | Vercel `VITE_API_URL` was absent at build time; set it and redeploy |
+| API responds 400 / `DisallowedHost` | Exact backend hostname in `ALLOWED_HOSTS` |
+| Browser blocks API calls | Exact frontend origin in `FRONTEND_URLS` |
 | Cloud Run container fails to start | Secret access, required variables, startup logs and `$PORT` binding |
 | Database connection fails | Cloud SQL Client role, instance attachment, socket path, database username/password |
 | Photos fail or disappear | Bucket name, object permissions, and `config.settings_cloud` selection |

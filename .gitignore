@@ -15,3 +15,10 @@ backend/cloudrun.env.yaml
 node_modules/
 dist/
 backend/media/
+
+# virtualenvs, local DBs, generated files
+venv/
+env/
+db.sqlite3
+staticfiles/
+backend/backups/

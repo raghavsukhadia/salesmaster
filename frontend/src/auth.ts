@@ -11,8 +11,10 @@ export interface Me {
 }
 
 const KEY = 'sm_tokens'
-// Empty locally uses Vite's /api proxy; production calls the Cloud Run backend directly.
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '')
+// Empty locally uses Vite's /api proxy; production calls the Cloud Run backend directly. Every request goes through
+// apiUrl(). VITE_API_BASE_URL is the older name, still accepted. A trailing "/api" is tolerated (paths already have it).
+const API_BASE = (import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '')
+  .trim().replace(/\/+$/, '').replace(/\/api$/, '')
 const apiUrl = (path: string) => `${API_BASE}${path}`
 
 export function logout() {

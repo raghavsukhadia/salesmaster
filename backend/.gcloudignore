@@ -13,3 +13,7 @@
 media/
 staticfiles/
 bootstrap-users.json
+venv/
+env/
+backups/
+cloudrun.env.yaml

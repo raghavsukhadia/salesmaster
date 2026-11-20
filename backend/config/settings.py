@@ -7,15 +7,29 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-DEBUG = os.getenv("DJANGO_DEBUG", "false").lower() == "true"
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "")
+def env(name, default="", *legacy):
+    """Read an env var, falling back to older names (DJANGO_DEBUG, DATABASE_* ...) so existing .env files keep working."""
+    for key in (name, *legacy):
+        value = os.getenv(key)
+        if value is not None and value.strip() != "":
+            return value.strip()
+    return default
+
+
+def env_list(name, default="", *legacy):
+    return [item.strip() for item in env(name, default, *legacy).split(",") if item.strip()]
+
+
+DEBUG = env("DEBUG", "false", "DJANGO_DEBUG").lower() in ("1", "true", "yes")
+
+SECRET_KEY = env("DJANGO_SECRET_KEY")
 if not SECRET_KEY:
     if not DEBUG:
-        raise RuntimeError("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG is not true")
-    SECRET_KEY = "dev-only-insecure-key"
+        raise RuntimeError("DJANGO_SECRET_KEY must be set when DEBUG is not true")
+    SECRET_KEY = "dev-only-insecure-key"  # never used in production: without DEBUG=true a missing key is fatal
 
-ALLOWED_HOSTS = [h for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",") if h]
+ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver", "DJANGO_ALLOWED_HOSTS")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -35,7 +49,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
-    "corsheaders.middleware.CorsMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # right after SecurityMiddleware, per whitenoise docs
+    "corsheaders.middleware.CorsMiddleware",  # before CommonMiddleware, per django-cors-headers docs
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -63,16 +78,30 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
-# Postgres when DATABASE_NAME is set; SQLite fallback keeps local dev/tests simple.
-if os.getenv("DATABASE_NAME"):
+# Cloud SQL (Cloud Run) when INSTANCE_CONNECTION_NAME is set: Postgres over the unix socket Cloud Run mounts.
+# Otherwise a local Postgres when DATABASE_NAME is set, else SQLite, which keeps local dev/tests simple.
+if env("INSTANCE_CONNECTION_NAME"):
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
-            "NAME": os.environ["DATABASE_NAME"],
-            "USER": os.getenv("DATABASE_USER", "postgres"),
-            "PASSWORD": os.getenv("DATABASE_PASSWORD", ""),
-            "HOST": os.getenv("DATABASE_HOST", "localhost"),
-            "PORT": os.getenv("DATABASE_PORT", "5432"),
+            "NAME": env("DB_NAME"),
+            "USER": env("DB_USER"),
+            "PASSWORD": env("DB_PASSWORD"),
+            "HOST": f"/cloudsql/{env('INSTANCE_CONNECTION_NAME')}",
+            "PORT": "5432",
+            "CONN_MAX_AGE": 60,
+            "CONN_HEALTH_CHECKS": True,
+        }
+    }
+elif env("DATABASE_NAME"):
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": env("DATABASE_NAME"),
+            "USER": env("DATABASE_USER", "postgres"),
+            "PASSWORD": env("DATABASE_PASSWORD"),
+            "HOST": env("DATABASE_HOST", "localhost"),
+            "PORT": env("DATABASE_PORT", "5432"),
         }
     }
 else:
@@ -102,9 +131,14 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-CORS_ALLOWED_ORIGINS = [o for o in os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173").split(",") if o]
+# Exact frontend origins (scheme + host, no trailing slash), e.g. https://sales-master.vercel.app
+FRONTEND_URLS = [u.rstrip("/") for u in env_list("FRONTEND_URLS", "http://localhost:5173", "CORS_ALLOWED_ORIGINS")]
+CORS_ALLOWED_ORIGINS = FRONTEND_URLS
+CSRF_TRUSTED_ORIGINS = FRONTEND_URLS
+CORS_EXPOSE_HEADERS = ["Content-Disposition"]  # lets the frontend read report download filenames cross-origin
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": ["rest_framework_simplejwt.authentication.JWTAuthentication"],

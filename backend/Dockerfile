@@ -6,10 +6,11 @@ WORKDIR /app
 COPY requirements.txt requirements-cloud.txt ./
 RUN pip install --no-cache-dir -r requirements-cloud.txt
 COPY . .
-# Static collection doesn't connect to the database or bucket. No runtime secrets enter the image.
+# collectstatic doesn't connect to the database or bucket; these placeholders only satisfy settings_cloud's
+# required-variable checks during the build. No runtime secrets enter the image.
 RUN DJANGO_SECRET_KEY=build-only-placeholder-not-a-runtime-secret-1234567890 \
-    DATABASE_NAME=build DATABASE_USER=build DATABASE_PASSWORD=build DATABASE_HOST=localhost \
-    DJANGO_ALLOWED_HOSTS=localhost CORS_ALLOWED_ORIGINS=https://example.invalid \
+    ALLOWED_HOSTS=localhost FRONTEND_URLS=https://example.invalid \
+    INSTANCE_CONNECTION_NAME=build:build:build DB_NAME=build DB_USER=build DB_PASSWORD=build \
     GS_BUCKET_NAME=build-only-placeholder \
     python manage.py collectstatic --noinput
 RUN useradd --create-home --uid 10001 appuser

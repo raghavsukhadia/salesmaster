@@ -1,15 +1,36 @@
+.git
+.gitignore
+.dockerignore
+.gcloudignore
+Dockerfile
+
+# secrets / local config
 .env
 .env.*
 !.env.example
+**/.env
+cloudrun.env.yaml
+bootstrap-users.json
+
+# virtualenvs
 .venv
+venv
+env
+
+# python caches
 __pycache__
 **/__pycache__
-*.pyc
-*.sqlite3
-*.sqlite3-*
+**/*.pyc
 .pytest_cache
+.ruff_cache
+
+# local databases and backups (**/ so nested copies are excluded too)
+db.sqlite3
+**/*.sqlite3
+**/*.sqlite3-*
+backups
 .backups
+
+# generated / user uploads
 media
 staticfiles
-bootstrap-users.json
-.git

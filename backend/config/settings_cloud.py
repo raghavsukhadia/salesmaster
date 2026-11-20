@@ -1,34 +1,32 @@
-"""Cloud Run settings. Local development and tests keep using config.settings."""
+"""Cloud Run settings. Local development and tests keep using config.settings.
+
+All env parsing (secret key, hosts, FRONTEND_URLS, Cloud SQL socket) lives in config.settings; this file only
+fails fast when production values are missing and adds HTTPS hardening and private GCS storage for visit photos
+(Cloud Run's disk is ephemeral, so uploaded files must not live in MEDIA_ROOT).
+"""
 from django.core.exceptions import ImproperlyConfigured
 
 from .settings import *  # noqa: F403
 
 
 def required(name):
-    value = os.getenv(name, "").strip()
+    value = os.getenv(name, "").strip()  # noqa: F405
     if not value:
         raise ImproperlyConfigured(f"{name} must be configured for Cloud Run")
     return value
 
 
-DEBUG = False
-SECRET_KEY = required("DJANGO_SECRET_KEY")
-for name in ("DATABASE_NAME", "DATABASE_USER", "DATABASE_PASSWORD", "DATABASE_HOST"):
+for name in ("DJANGO_SECRET_KEY", "ALLOWED_HOSTS", "FRONTEND_URLS",
+             "INSTANCE_CONNECTION_NAME", "DB_NAME", "DB_USER", "DB_PASSWORD"):
     required(name)
-ALLOWED_HOSTS = [value.strip() for value in required("DJANGO_ALLOWED_HOSTS").split(",") if value.strip()]
-CORS_ALLOWED_ORIGINS = [value.strip() for value in required("CORS_ALLOWED_ORIGINS").split(",") if value.strip()]
-CORS_EXPOSE_HEADERS = ["Content-Disposition"]
-CSRF_TRUSTED_ORIGINS = [
-    value.strip() for value in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if value.strip()
-]
+
+DEBUG = False
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_HSTS_SECONDS = 3600
 
-STATIC_ROOT = BASE_DIR / "staticfiles"
-MIDDLEWARE = [MIDDLEWARE[0], "whitenoise.middleware.WhiteNoiseMiddleware", *MIDDLEWARE[1:]]
 STORAGES = {
     "default": {
         "BACKEND": "storages.backends.gcloud.GoogleCloudStorage",

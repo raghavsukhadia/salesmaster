@@ -9,7 +9,7 @@ Deployment: [Vercel frontend + Google Cloud backend](docs/DEPLOYMENT_VERCEL_GCP.
 ```
 cd backend
 python -m venv .venv; .venv\Scripts\pip install -r requirements.txt
-copy .env.example .env      # set DJANGO_SECRET_KEY, or keep DJANGO_DEBUG=true
+copy .env.example .env      # set DJANGO_SECRET_KEY, or keep DEBUG=true
 .venv\Scripts\python manage.py migrate
 .venv\Scripts\python manage.py createsuperuser
 .venv\Scripts\python manage.py runserver
